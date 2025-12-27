@@ -55,8 +55,8 @@ class GoldManTradingBot:
         self.mt5_server = mt5_server
         
         self.last_price = None
-        
-        self.last_price = None
+        self.last_activity_log_time = None
+        self.last_activity_time = None
     
     async def initialize(self):
         logger.info("Starting bot initialization...")
@@ -122,6 +122,7 @@ class GoldManTradingBot:
         if self.current_strategy != StrategyType.SUPER_SCALP:
             logger.info("[MAIN_LOOP] Main trading loop started")
         loop_count = 0
+        last_activity_check = time.time()
         while self.running:
             try:
                 loop_count += 1
@@ -188,7 +189,6 @@ class GoldManTradingBot:
                         await asyncio.sleep(1)
                         continue
                     
-                    logger.info(f"[MAIN_LOOP] New candle detected, analyzing market...")
                     signal = self.strategy_manager.analyze_market()
                 
                 if signal:
@@ -216,6 +216,7 @@ class GoldManTradingBot:
                     
                     if ticket:
                         logger.info(f"[MAIN_LOOP] Trade opened successfully: Ticket {ticket}")
+                        self.last_activity_time = time.time()
                         
                         params = self.rl_engine.get_parameters(signal.symbol, self.current_strategy.value)
                         
@@ -245,12 +246,19 @@ class GoldManTradingBot:
                     if self.current_strategy != StrategyType.SUPER_SCALP and loop_count % 10 == 0:
                         logger.info(f"[MAIN_LOOP] No valid signal generated. Waiting for next analysis cycle.")
                 
+                current_time = time.time()
+                if current_time - last_activity_check >= 60:
+                    if self.last_activity_time is None or current_time - self.last_activity_time >= 60:
+                        logger.info(f"[MAIN_LOOP] No activity in the last minute. Bot is running and waiting for opportunities.")
+                    last_activity_check = current_time
+                
                 if self.rl_engine.should_optimize(symbol_name, self.current_strategy.value):
                     logger.info("[MAIN_LOOP] Starting RL optimization...")
                     old_params = self.rl_engine.get_parameters(symbol_name, self.current_strategy.value)
                     logger.info(f"[SENSITIVE] Starting RL optimization: Symbol={symbol_name}, Strategy={self.current_strategy.value}")
                     new_params = self.rl_engine.optimize_all(symbol_name, self.current_strategy.value)
                     logger.info(f"[SENSITIVE] RL optimization completed: Symbol={symbol_name}, Strategy={self.current_strategy.value}, Updated {len(new_params)} parameters")
+                    self.last_activity_time = time.time()
                 
                 if self.current_strategy == StrategyType.SUPER_SCALP:
                     await asyncio.sleep(1)

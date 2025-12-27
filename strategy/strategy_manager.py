@@ -102,7 +102,7 @@ class StrategyManager:
             
             trend = self.market_engine.detect_trend(df)
             
-            if self.current_strategy == StrategyType.SUPER_SCALP:
+            if self.current_strategy == StrategyType.SUPER_SCALP and idx < 3:
                 logger.info(f"[TREND] {tf.value}: {trend}")
             
             if trend == "SIDEWAYS":
@@ -119,13 +119,6 @@ class StrategyManager:
             else:
                 entry_points.append(entry_point)
             
-            if idx == sl_tp_timeframe_index:
-                if self.current_strategy == StrategyType.SUPER_SCALP:
-                    logger.info(f"[ANALYSIS] Fine analysis and SL/TP calculation at {tf.value}")
-            
-            if idx == len(timeframes) - 1:
-                if self.current_strategy == StrategyType.SUPER_SCALP:
-                    logger.info(f"[ANALYSIS] Entry point optimization at {tf.value}")
             
             if self.current_strategy != StrategyType.SUPER_SCALP or idx < len(timeframes) - 1:
                 current_price = df['close'].iloc[-1] if not df.empty else 0
@@ -186,7 +179,8 @@ class StrategyManager:
         trend_confidence = trend_scores[dominant_trend] / sum(trend_scores.values()) if sum(trend_scores.values()) > 0 else 0.5
         
         if self.current_strategy == StrategyType.SUPER_SCALP:
-            logger.info(f"[TREND] {dominant_trend} | [ENTRY] {direction} @ {final_entry:.2f}")
+            if self.current_strategy == StrategyType.SUPER_SCALP:
+                logger.info(f"[TREND] {dominant_trend} | [ENTRY] {direction} @ {final_entry:.2f}")
         else:
             trend_distribution = {t: trends.count(t) for t in set(trends)}
             logger.info(f"[MARKET_ANALYSIS] Market Regime: Trend={dominant_trend}, Distribution={trend_distribution}, Direction={direction}, Entry={final_entry:.5f}")
@@ -229,11 +223,13 @@ class StrategyManager:
         min_rr_ratio = parameters.get('min_rr_ratio', MIN_RR_RATIO)
         
         if self.current_strategy == StrategyType.SUPER_SCALP:
-            logger.info(f"[R/R] {rr_ratio:.2f} (Min: {min_rr_ratio:.2f})")
+            if self.current_strategy == StrategyType.SUPER_SCALP:
+                logger.info(f"[R/R] {rr_ratio:.2f} (Min: {min_rr_ratio:.2f})")
         
         if rr_ratio < min_rr_ratio:
             if self.current_strategy == StrategyType.SUPER_SCALP:
-                logger.info(f"[ENTRY] Rejected - R/R={rr_ratio:.2f} < {min_rr_ratio:.2f}")
+                if self.current_strategy != StrategyType.SUPER_SCALP:
+                    logger.info(f"[ENTRY] Rejected - R/R={rr_ratio:.2f} < {min_rr_ratio:.2f}")
             else:
                 logger.info(f"[MARKET_ANALYSIS] R/R ratio ({rr_ratio:.2f}) is below minimum ({min_rr_ratio:.2f}). Trade rejected.")
             return None
