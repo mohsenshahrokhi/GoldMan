@@ -75,7 +75,7 @@ class RLEngine:
             'garch_k': (1.5, 3.0),
             'node_safety_margin': (3.0, 10.0),
             'node_spread_factor': (0.5, 2.0),
-            'min_rr_ratio': (1.2, 2.5),
+            'min_rr_ratio': (1.0, 2.5),  # Lower bound changed to 1.0 for testing. Original: 1.2
             'max_risk_per_trade': (0.001, 0.05),
             'nds_lookback': (10.0, 50.0),
             'market_trend_period': (10.0, 30.0),
