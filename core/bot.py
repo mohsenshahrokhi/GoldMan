@@ -210,9 +210,9 @@ class GoldManTradingBot:
                         signal.lot_size *= volume_multiplier
                         logger.info(f"[SENSITIVE] Volume multiplier applied: OldLotSize={old_lot_size:.2f}, NewLotSize={signal.lot_size:.2f}, Multiplier={volume_multiplier:.2f}, Reason=Drawdown protection")
                     
-                    logger.info(f"[TRADE_ENTRY] Pre-trade validation passed. Proceeding to execute trade.")
+                    logger.info(f"[ORDER_ENTRY] Pre-trade validation passed. Proceeding to execute trade.")
                     
-                    ticket = self.order_executor.execute_trade(signal)
+                    ticket = self.order_executor.execute_order(signal)
                     
                     if ticket:
                         logger.info(f"[MAIN_LOOP] Trade opened successfully: Ticket {ticket}")

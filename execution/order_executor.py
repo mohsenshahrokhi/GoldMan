@@ -69,8 +69,8 @@ class OrderExecutor:
             positions = [p for p in positions if p.symbol == symbol]
         return len(positions) > 0
     
-    def execute_trade(self, signal: OrderSignal) -> Optional[int]:
-        if not self.pre_trade_validation(signal):
+    def execute_order(self, signal: OrderSignal) -> Optional[int]:
+        if not self.pre_order_validation(signal):
             return None
         
         if mt5 is None:
@@ -158,7 +158,7 @@ class OrderExecutor:
             logger.error(f"Error executing trade: {e}")
             return None
     
-    def pre_trade_validation(self, signal: OrderSignal) -> bool:
+    def pre_order_validation(self, signal: OrderSignal) -> bool:
         if self.has_open_position(signal.symbol):
             logger.info("Active position exists")
             return False

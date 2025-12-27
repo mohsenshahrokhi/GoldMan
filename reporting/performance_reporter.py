@@ -19,30 +19,30 @@ class PerformanceReporter:
     def __init__(self, db_manager: DatabaseManager):
         self.db = db_manager
     
-    def calculate_win_rate(self, trades: List) -> float:
+    def calculate_win_rate(self, orders: List) -> float:
         """محاسبه Win Rate"""
-        if not trades:
+        if not orders:
             return 0.0
-        winning = sum(1 for t in trades if t.get('profit', 0) > 0)
-        return winning / len(trades) * 100
+        winning = sum(1 for t in orders if t.get('profit', 0) > 0)
+        return winning / len(orders) * 100
     
-    def calculate_profit_factor(self, trades: List) -> float:
+    def calculate_profit_factor(self, orders: List) -> float:
         """محاسبه Profit Factor"""
-        if not trades:
+        if not orders:
             return 0.0
-        gross_profit = sum(t.get('profit', 0) for t in trades if t.get('profit', 0) > 0)
-        gross_loss = abs(sum(t.get('profit', 0) for t in trades if t.get('profit', 0) < 0))
+        gross_profit = sum(t.get('profit', 0) for t in orders if t.get('profit', 0) > 0)
+        gross_loss = abs(sum(t.get('profit', 0) for t in orders if t.get('profit', 0) < 0))
         if gross_loss == 0:
             return float('inf') if gross_profit > 0 else 0.0
         return gross_profit / gross_loss
     
-    def calculate_max_drawdown(self, trades: List) -> float:
+    def calculate_max_drawdown(self, orders: List) -> float:
         """محاسبه Max Drawdown"""
-        if not trades:
+        if not orders:
             return 0.0
         equity_curve = []
         running_equity = 0.0
-        for trade in trades:
+        for trade in orders:
             running_equity += trade.get('profit', 0)
             equity_curve.append(running_equity)
         
@@ -60,11 +60,11 @@ class PerformanceReporter:
         
         return max_dd * 100
     
-    def calculate_sharpe_ratio(self, trades: List, risk_free_rate: float = 0.0) -> float:
+    def calculate_sharpe_ratio(self, orders: List, risk_free_rate: float = 0.0) -> float:
         """محاسبه Sharpe Ratio"""
-        if np is None or len(trades) < 2:
+        if np is None or len(orders) < 2:
             return 0.0
-        returns = [t.get('profit', 0) for t in trades]
+        returns = [t.get('profit', 0) for t in orders]
         if not returns:
             return 0.0
         mean_return = np.mean(returns)
@@ -77,7 +77,7 @@ class PerformanceReporter:
                          start_date: datetime = None, end_date: datetime = None) -> Dict:
         """دریافت گزارش معاملات"""
         cursor = self.db.conn.cursor()
-        query = "SELECT * FROM trades WHERE status = 'CLOSED'"
+        query = "SELECT * FROM orders WHERE status = 'CLOSED'"
         params = []
         
         if symbol:
@@ -96,9 +96,9 @@ class PerformanceReporter:
         query += " ORDER BY exit_time DESC"
         cursor.execute(query, params)
         
-        trades = []
+        orders = []
         for row in cursor.fetchall():
-            trades.append({
+            orders.append({
                 'ticket': row['ticket'],
                 'symbol': row['symbol'],
                 'direction': row['direction'],
@@ -110,11 +110,11 @@ class PerformanceReporter:
                 'strategy': row['strategy']
             })
         
-        if not trades:
+        if not orders:
             return {
-                'total_trades': 0,
-                'winning_trades': 0,
-                'losing_trades': 0,
+                'total_orders': 0,
+                'winning_orders': 0,
+                'losing_orders': 0,
                 'total_profit': 0.0,
                 'win_rate': 0.0,
                 'profit_factor': 0.0,
@@ -122,19 +122,19 @@ class PerformanceReporter:
                 'sharpe_ratio': 0.0
             }
         
-        winning = sum(1 for t in trades if t['profit'] > 0)
-        losing = len(trades) - winning
-        total_profit = sum(t['profit'] for t in trades)
+        winning = sum(1 for t in orders if t['profit'] > 0)
+        losing = len(orders) - winning
+        total_profit = sum(t['profit'] for t in orders)
         
         return {
-            'total_trades': len(trades),
-            'winning_trades': winning,
-            'losing_trades': losing,
+            'total_orders': len(orders),
+            'winning_orders': winning,
+            'losing_orders': losing,
             'total_profit': total_profit,
-            'win_rate': self.calculate_win_rate(trades),
-            'profit_factor': self.calculate_profit_factor(trades),
-            'max_drawdown': self.calculate_max_drawdown(trades),
-            'sharpe_ratio': self.calculate_sharpe_ratio(trades)
+            'win_rate': self.calculate_win_rate(orders),
+            'profit_factor': self.calculate_profit_factor(orders),
+            'max_drawdown': self.calculate_max_drawdown(orders),
+            'sharpe_ratio': self.calculate_sharpe_ratio(orders)
         }
     
     def generate_daily_report(self) -> str:
@@ -149,9 +149,9 @@ class PerformanceReporter:
 📊 گزارش عملکرد روزانه - {today}
 
 📈 آمار کلی:
-• تعداد معاملات: {report['total_trades']}
-• معاملات برنده: {report['winning_trades']}
-• معاملات بازنده: {report['losing_trades']}
+• تعداد معاملات: {report['total_orders']}
+• معاملات برنده: {report['winning_orders']}
+• معاملات بازنده: {report['losing_orders']}
 • سود/زیان کل: ${report['total_profit']:.2f}
 
 📊 شاخص‌های عملکرد:
@@ -172,9 +172,9 @@ class PerformanceReporter:
 📊 گزارش عملکرد هفتگی
 
 📈 آمار کلی:
-• تعداد معاملات: {report['total_trades']}
-• معاملات برنده: {report['winning_trades']}
-• معاملات بازنده: {report['losing_trades']}
+• تعداد معاملات: {report['total_orders']}
+• معاملات برنده: {report['winning_orders']}
+• معاملات بازنده: {report['losing_orders']}
 • سود/زیان کل: ${report['total_profit']:.2f}
 
 📊 شاخص‌های عملکرد:
@@ -195,9 +195,9 @@ class PerformanceReporter:
 📊 گزارش عملکرد ماهانه
 
 📈 آمار کلی:
-• تعداد معاملات: {report['total_trades']}
-• معاملات برنده: {report['winning_trades']}
-• معاملات بازنده: {report['losing_trades']}
+• تعداد معاملات: {report['total_orders']}
+• معاملات برنده: {report['winning_orders']}
+• معاملات بازنده: {report['losing_orders']}
 • سود/زیان کل: ${report['total_profit']:.2f}
 
 📊 شاخص‌های عملکرد:

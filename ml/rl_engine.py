@@ -16,7 +16,7 @@ class RLEngine:
         self.learning_rate_decay = 0.995
         self.min_learning_rate = 0.001
         self.gamma = 0.95
-        self.trade_count_threshold = 20
+        self.order_count_threshold = 20
         self.experience_replay_buffer_size = 1000
         self.experience_replay_batch_size = 32
         self.experience_buffers = {}
@@ -90,29 +90,29 @@ class RLEngine:
             'partial_exit_percentage_2': (0.2, 0.5)
         }
     
-    def calculate_reward(self, trade_profit: float, transaction_cost: float, 
+    def calculate_reward(self, order_profit: float, transaction_cost: float, 
                         risk_penalty: float, missed_opportunity: float = 0.0,
                         rr_ratio: float = 1.0, hold_time: float = 0.0,
                         max_profit: float = 0.0, drawdown: float = 0.0) -> float:
-        base_reward = trade_profit - transaction_cost - risk_penalty - missed_opportunity
+        base_reward = order_profit - transaction_cost - risk_penalty - missed_opportunity
         
         rr_bonus = 0.0
         if rr_ratio >= 2.0:
-            rr_bonus = trade_profit * 0.1
+            rr_bonus = order_profit * 0.1
         elif rr_ratio >= 1.5:
-            rr_bonus = trade_profit * 0.05
+            rr_bonus = order_profit * 0.05
         
         time_penalty = 0.0
         if hold_time > 24 * 3600:
-            time_penalty = trade_profit * 0.02
+            time_penalty = order_profit * 0.02
         
         drawdown_penalty = drawdown * 0.1 if drawdown > 0 else 0.0
         
         max_profit_bonus = 0.0
-        if max_profit > 0 and trade_profit > 0:
-            profit_ratio = trade_profit / max_profit if max_profit > 0 else 0
+        if max_profit > 0 and order_profit > 0:
+            profit_ratio = order_profit / max_profit if max_profit > 0 else 0
             if profit_ratio >= 0.8:
-                max_profit_bonus = trade_profit * 0.05
+                max_profit_bonus = order_profit * 0.05
         
         total_reward = base_reward + rr_bonus - time_penalty - drawdown_penalty + max_profit_bonus
         
@@ -210,7 +210,7 @@ class RLEngine:
     def optimize_weights(self, symbol: str, strategy: str) -> Dict[str, float]:
         cursor = self.db.conn.cursor()
         cursor.execute("""
-            SELECT state, action, reward, trade_id
+            SELECT state, action, reward, order_id
             FROM rl_experiences
             WHERE symbol = ? AND strategy = ?
             ORDER BY timestamp DESC
@@ -287,7 +287,7 @@ class RLEngine:
     def optimize_parameters(self, symbol: str, strategy: str) -> Dict[str, float]:
         cursor = self.db.conn.cursor()
         cursor.execute("""
-            SELECT state, action, reward, trade_id
+            SELECT state, action, reward, order_id
             FROM rl_experiences
             WHERE symbol = ? AND strategy = ?
             ORDER BY timestamp DESC
@@ -366,7 +366,7 @@ class RLEngine:
         
         cursor = self.db.conn.cursor()
         cursor.execute("""
-            SELECT state, action, reward, trade_id, timestamp
+            SELECT state, action, reward, order_id, timestamp
             FROM rl_experiences
             WHERE symbol = ? AND strategy = ?
             ORDER BY timestamp DESC
@@ -387,7 +387,7 @@ class RLEngine:
                     'state': state,
                     'action': action,
                     'reward': reward,
-                    'trade_id': exp['trade_id']
+                    'order_id': exp['order_id']
                 })
             except:
                 continue
@@ -484,7 +484,7 @@ class RLEngine:
         
         cursor = self.db.conn.cursor()
         cursor.execute("""
-            SELECT state, action, reward, trade_id, timestamp
+            SELECT state, action, reward, order_id, timestamp
             FROM rl_experiences
             WHERE symbol = ? AND strategy = ?
             ORDER BY timestamp DESC
@@ -505,7 +505,7 @@ class RLEngine:
                     'state': state,
                     'action': action,
                     'reward': reward,
-                    'trade_id': exp['trade_id']
+                    'order_id': exp['order_id']
                 })
             except:
                 continue
@@ -610,11 +610,11 @@ class RLEngine:
     
     def should_optimize(self, symbol: str, strategy: str) -> bool:
         trade_count = self.db.get_order_count(symbol, strategy)
-        return trade_count >= self.trade_count_threshold and trade_count % self.trade_count_threshold == 0
+        return trade_count >= self.order_count_threshold and trade_count % self.order_count_threshold == 0
     
     def save_experience(self, symbol: str, strategy: str, timeframe: str,
                        state: Dict, action: Dict, reward: float, 
-                       next_state: Dict = None, trade_id: int = None):
+                       next_state: Dict = None, order_id: int = None):
         experience = {
             'symbol': symbol,
             'strategy': strategy,
@@ -623,6 +623,6 @@ class RLEngine:
             'action': action,
             'reward': reward,
             'next_state': next_state or {},
-            'trade_id': trade_id
+            'order_id': order_id
         }
         self.db.save_experience(experience)
