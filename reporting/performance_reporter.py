@@ -73,7 +73,7 @@ class PerformanceReporter:
             return 0.0
         return (mean_return - risk_free_rate) / std_return * np.sqrt(252)  # Annualized
     
-    def get_trades_report(self, symbol: str = None, strategy: str = None, 
+    def get_orders_report(self, symbol: str = None, strategy: str = None, 
                          start_date: datetime = None, end_date: datetime = None) -> Dict:
         """دریافت گزارش معاملات"""
         cursor = self.db.conn.cursor()
@@ -143,7 +143,7 @@ class PerformanceReporter:
         start_date = datetime.combine(today, datetime.min.time())
         end_date = datetime.combine(today, datetime.max.time())
         
-        report = self.get_trades_report(start_date=start_date, end_date=end_date)
+        report = self.get_orders_report(start_date=start_date, end_date=end_date)
         
         return f"""
 📊 گزارش عملکرد روزانه - {today}
@@ -166,7 +166,7 @@ class PerformanceReporter:
         end_date = datetime.now()
         start_date = end_date - timedelta(days=7)
         
-        report = self.get_trades_report(start_date=start_date, end_date=end_date)
+        report = self.get_orders_report(start_date=start_date, end_date=end_date)
         
         return f"""
 📊 گزارش عملکرد هفتگی
@@ -189,7 +189,7 @@ class PerformanceReporter:
         end_date = datetime.now()
         start_date = end_date - timedelta(days=30)
         
-        report = self.get_trades_report(start_date=start_date, end_date=end_date)
+        report = self.get_orders_report(start_date=start_date, end_date=end_date)
         
         return f"""
 📊 گزارش عملکرد ماهانه

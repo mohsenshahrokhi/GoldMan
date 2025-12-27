@@ -198,7 +198,7 @@ class OrderExecutor:
         return True
     
     def manage_position(self, ticket: int, strategy_manager: StrategyManager, 
-                       risk_manager: RiskManager, nds_engine: MarketEngine) -> bool:
+                       risk_manager: RiskManager, market_engine: MarketEngine) -> bool:
         if mt5 is None:
             return False
             
@@ -227,13 +227,13 @@ class OrderExecutor:
                 logger.info(f"[SENSITIVE] Trend weakness detected: Ticket={ticket}, Symbol={symbol}, CurrentSL={sl_current:.5f}, WeaknessPrice={weakness_price:.5f}, NewSL={new_sl:.5f}")
                 self.update_stop_loss(ticket, new_sl)
             
-            should_close_and_reopen = self.check_close_and_reopen(position, profit_pct, strategy_manager, risk_manager, nds_engine)
+            should_close_and_reopen = self.check_close_and_reopen(position, profit_pct, strategy_manager, risk_manager, market_engine)
             if should_close_and_reopen:
                 logger.info(f"[SENSITIVE] Closing position at 80% profit for reopening: Ticket={ticket}, Symbol={symbol}, Profit={profit_pct:.2f}%")
                 self.close_position(ticket)
                 return False
             
-            self.apply_trailing_stop(position, profit_pct, risk_manager, nds_engine)
+            self.apply_trailing_stop(position, profit_pct, risk_manager, market_engine)
             
             self.apply_partial_exit(position, profit_pct, risk_manager)
             
@@ -244,7 +244,7 @@ class OrderExecutor:
             return False
     
     def apply_trailing_stop(self, position: Any, profit_pct: float, 
-                           risk_manager: RiskManager, nds_engine: MarketEngine):
+                           risk_manager: RiskManager, market_engine: MarketEngine):
         if mt5 is None or self.data_provider is None:
             return
             
@@ -272,11 +272,11 @@ class OrderExecutor:
         
         if profit_pct >= 10 and profit_pct < 15:
             if direction == "BUY":
-                node = nds_engine.find_nearest_node(df, entry_price, "below")
+                node = market_engine.find_nearest_node(df, entry_price, "below")
                 if node:
                     new_sl = node - adjustment
             else:
-                node = nds_engine.find_nearest_node(df, entry_price, "above")
+                node = market_engine.find_nearest_node(df, entry_price, "above")
                 if node:
                     new_sl = node + adjustment
         
@@ -289,22 +289,22 @@ class OrderExecutor:
         elif profit_pct >= 50 and profit_pct < 75:
             target_price = entry_price * (1 + 0.5 * (1 if direction == "BUY" else -1))
             if direction == "BUY":
-                node = nds_engine.find_nearest_node(df, target_price, "below")
+                node = market_engine.find_nearest_node(df, target_price, "below")
                 if node:
                     new_sl = node - adjustment
             else:
-                node = nds_engine.find_nearest_node(df, target_price, "above")
+                node = market_engine.find_nearest_node(df, target_price, "above")
                 if node:
                     new_sl = node + adjustment
         
         elif profit_pct >= 75 and profit_pct < 80:
             target_price = entry_price * (1 + 0.75 * (1 if direction == "BUY" else -1))
             if direction == "BUY":
-                node = nds_engine.find_nearest_node(df, target_price, "below")
+                node = market_engine.find_nearest_node(df, target_price, "below")
                 if node:
                     new_sl = node - adjustment
             else:
-                node = nds_engine.find_nearest_node(df, target_price, "above")
+                node = market_engine.find_nearest_node(df, target_price, "above")
                 if node:
                     new_sl = node + adjustment
         
@@ -426,7 +426,7 @@ class OrderExecutor:
     def check_close_and_reopen(self, position: Any, profit_pct: float, 
                                strategy_manager: StrategyManager, 
                                risk_manager: RiskManager, 
-                               nds_engine: MarketEngine) -> bool:
+                               market_engine: MarketEngine) -> bool:
         if profit_pct < 80:
             return False
         
@@ -461,7 +461,7 @@ class OrderExecutor:
             if df is None or df.empty:
                 continue
             
-            trend = nds_engine.detect_trend(df)
+            trend = market_engine.detect_trend(df)
             
             if direction == "BUY" and trend == "UP":
                 strong_confirmations += 1

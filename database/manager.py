@@ -99,7 +99,7 @@ class DatabaseManager:
             """)
             
             cursor.execute("""
-                CREATE TABLE IF NOT EXISTS nds_parameters (
+                CREATE TABLE IF NOT EXISTS market_parameters (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
                     symbol TEXT,
                     timeframe TEXT,
@@ -223,27 +223,27 @@ class DatabaseManager:
                      lot_size, entry_time, strategy, status)
                     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """, (
-                    trade_data.get('ticket'),
-                    trade_data.get('symbol'),
-                    trade_data.get('direction'),
-                    trade_data.get('entry_price'),
-                    trade_data.get('stop_loss'),
-                    trade_data.get('take_profit'),
-                    trade_data.get('lot_size'),
-                    trade_data.get('entry_time'),
-                    trade_data.get('strategy'),
-                    trade_data.get('status', 'OPEN')
+                    order_data.get('ticket'),
+                    order_data.get('symbol'),
+                    order_data.get('direction'),
+                    order_data.get('entry_price'),
+                    order_data.get('stop_loss'),
+                    order_data.get('take_profit'),
+                    order_data.get('lot_size'),
+                    order_data.get('entry_time'),
+                    order_data.get('strategy'),
+                    order_data.get('status', 'OPEN')
                 ))
                 self.conn.commit()
                 return True
         except sqlite3.Error as e:
-            logger.error(f"Error saving trade: {e}, TradeData: {trade_data}")
+            logger.error(f"Error saving trade: {e}, OrderData: {order_data}")
             return False
         except KeyError as e:
-            logger.error(f"Missing required field in trade_data: {e}, TradeData: {trade_data}")
+            logger.error(f"Missing required field in order_data: {e}, OrderData: {order_data}")
             return False
         except Exception as e:
-            logger.error(f"Unexpected error saving trade: {e}, TradeData: {trade_data}")
+            logger.error(f"Unexpected error saving trade: {e}, OrderData: {order_data}")
             return False
     
     def update_order(self, ticket: int, updates: Dict) -> bool:
