@@ -76,10 +76,16 @@ def load_environment():
 
 
 def get_strategy_input():
-    return input().strip()
+    try:
+        return input().strip()
+    except (EOFError, KeyboardInterrupt, OSError):
+        return ""
 
 def get_symbol_input():
-    return input().strip()
+    try:
+        return input().strip()
+    except (EOFError, KeyboardInterrupt, OSError):
+        return ""
 
 async def get_user_strategy_selection() -> StrategyType:
     print("\n" + "="*50)
@@ -114,6 +120,24 @@ async def get_user_strategy_selection() -> StrategyType:
         logger.warning(f"Error getting strategy selection: {e}. Using default: Day Trading")
         return StrategyType.DAY_TRADING
 
+
+async def get_console_selection(bot: GoldManTradingBot):
+    """دریافت انتخاب از console با timeout"""
+    try:
+        logger.info("Console input available. You can select strategy and symbol now.")
+        selected_strategy = await get_user_strategy_selection()
+        logger.info(f"Selected strategy: {selected_strategy.value}")
+        
+        selected_symbol = await get_user_symbol_selection(bot)
+        logger.info(f"Selected symbol: {selected_symbol.value}")
+        
+        return (selected_strategy, selected_symbol)
+    except asyncio.TimeoutError:
+        logger.info("Console input timeout. Waiting for Telegram selection...")
+        return None
+    except Exception as e:
+        logger.warning(f"Error in console selection: {e}")
+        return None
 
 async def get_user_symbol_selection(bot: GoldManTradingBot) -> SymbolType:
     print("\n" + "="*50)
@@ -177,20 +201,51 @@ async def main():
         
         selected_strategy = None
         selected_symbol = None
+        console_task = None
         
         logger.info(f"Telegram token status: {'SET' if telegram_token else 'NOT SET'}, Telegram Bot status: {'ACTIVE' if bot.telegram_bot else 'NOT ACTIVE'}")
         
         if telegram_token and bot.telegram_bot:
-            logger.info("Telegram Bot is active. Waiting for user selection via Telegram...")
-            logger.info("Send /start command to your Telegram bot to begin.")
+            logger.info("Telegram Bot is active. You can select via Telegram OR console.")
+            logger.info("Send /start command to your Telegram bot OR use console input below.")
+            logger.info("Console input will timeout in 10 seconds if not used.")
+            
+            console_task = None
             try:
-                while True:
-                    await asyncio.sleep(1)
-                    if bot.is_running():
-                        logger.info("Bot started via Telegram!")
-                        break
+                console_task = asyncio.create_task(get_console_selection(bot))
+                console_result = await console_task
             except asyncio.CancelledError:
-                logger.info("Stop signal received...")
+                logger.info("Console selection cancelled")
+                if console_task and not console_task.done():
+                    console_task.cancel()
+                    try:
+                        await console_task
+                    except asyncio.CancelledError:
+                        pass
+                console_result = None
+            
+            if console_result:
+                selected_strategy, selected_symbol = console_result
+                logger.info("Selection completed via Console")
+                await bot.start_trading(selected_symbol, selected_strategy)
+                logger.info("Bot started successfully!")
+                
+                try:
+                    while True:
+                        await asyncio.sleep(1)
+                except asyncio.CancelledError:
+                    logger.info("Stop signal received...")
+            else:
+                logger.info("Console input timeout. Waiting for Telegram selection...")
+                logger.info("Send /start command to your Telegram bot to begin.")
+                try:
+                    while True:
+                        await asyncio.sleep(1)
+                        if bot.is_running():
+                            logger.info("Bot started via Telegram!")
+                            break
+                except asyncio.CancelledError:
+                    logger.info("Stop signal received...")
         else:
             if telegram_token:
                 logger.warning("Telegram token provided but Telegram Bot failed to initialize. Using console input instead.")

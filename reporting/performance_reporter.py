@@ -77,7 +77,7 @@ class PerformanceReporter:
                          start_date: datetime = None, end_date: datetime = None) -> Dict:
         """دریافت گزارش معاملات"""
         cursor = self.db.conn.cursor()
-        query = "SELECT * FROM orders WHERE status = 'CLOSED'"
+        query = "SELECT * FROM trades WHERE status = 'CLOSED'"
         params = []
         
         if symbol:

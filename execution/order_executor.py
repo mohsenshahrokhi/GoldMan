@@ -48,6 +48,26 @@ class OrderExecutor:
         logger.debug(f"Filling mode for {symbol_info.name}: symbol_filling={filling_mode}, order_filling={result}")
         return result
     
+    def get_available_filling_modes(self, symbol_info) -> List[int]:
+        """دریافت لیست filling modeهای موجود برای symbol به ترتیب اولویت"""
+        if mt5 is None:
+            return [mt5.ORDER_FILLING_FOK]
+        
+        filling_mode = symbol_info.filling_mode
+        modes = []
+        
+        if filling_mode & 1:
+            modes.append(mt5.ORDER_FILLING_IOC)
+        if filling_mode & 2:
+            modes.append(mt5.ORDER_FILLING_RETURN)
+        if filling_mode & 4:
+            modes.append(mt5.ORDER_FILLING_FOK)
+        
+        if not modes:
+            modes = [mt5.ORDER_FILLING_FOK]
+        
+        return modes
+    
     def set_data_provider(self, data_provider: MarketDataProvider):
         self.data_provider = data_provider
     
@@ -93,23 +113,11 @@ class OrderExecutor:
             sl = signal.stop_loss
             tp = signal.take_profit
             
-            filling_mode = self.get_filling_mode(symbol_info)
-            logger.info(f"Using filling mode {filling_mode} for {signal.symbol} (symbol_filling={symbol_info.filling_mode})")
+            available_modes = self.get_available_filling_modes(symbol_info)
+            all_modes = [mt5.ORDER_FILLING_FOK, mt5.ORDER_FILLING_IOC, mt5.ORDER_FILLING_RETURN]
             
-            request = {
-                "action": mt5.TRADE_ACTION_DEAL,
-                "symbol": signal.symbol,
-                "volume": signal.lot_size,
-                "type": order_type,
-                "price": price,
-                "sl": sl,
-                "tp": tp,
-                "deviation": 20,
-                "magic": 234000,
-                "comment": f"GoldMan-{signal.timeframe}",
-                "type_time": mt5.ORDER_TIME_GTC,
-                "type_filling": filling_mode,
-            }
+            modes_to_try = available_modes + [m for m in all_modes if m not in available_modes]
+            logger.info(f"Filling modes to try for {signal.symbol}: {modes_to_try} (symbol_filling={symbol_info.filling_mode})")
             
             spread_pips = (symbol_info.ask - symbol_info.bid) / symbol_info.point
             if symbol_info.digits == 3 or symbol_info.digits == 5:
@@ -128,10 +136,42 @@ class OrderExecutor:
             
             logger.info(f"[SENSITIVE] Attempting to open trade: Symbol={signal.symbol}, Direction={signal.direction}, Entry={price:.5f}, SL={sl:.5f}, TP={tp:.5f}, LotSize={signal.lot_size:.2f}, SLDistance={sl_pips:.1f}pips, TPDistance={tp_pips:.1f}pips, Spread={spread_pips:.1f}pips, RiskAmount=${risk_amount:.2f}, RewardAmount=${reward_amount:.2f}, R/R={signal.confidence:.2f}")
             
-            result = mt5.order_send(request)
+            result = None
+            last_error = None
             
-            if result.retcode != mt5.TRADE_RETCODE_DONE:
-                logger.error(f"[SENSITIVE] Failed to open trade: Retcode={result.retcode}, Comment={result.comment}, Symbol={signal.symbol}, Direction={signal.direction}, LotSize={signal.lot_size:.2f}")
+            for filling_mode in modes_to_try:
+                request = {
+                    "action": mt5.TRADE_ACTION_DEAL,
+                    "symbol": signal.symbol,
+                    "volume": signal.lot_size,
+                    "type": order_type,
+                    "price": price,
+                    "sl": sl,
+                    "tp": tp,
+                    "deviation": 20,
+                    "magic": 234000,
+                    "comment": f"GoldMan-{signal.timeframe}",
+                    "type_time": mt5.ORDER_TIME_GTC,
+                    "type_filling": filling_mode,
+                }
+                
+                result = mt5.order_send(request)
+                
+                if result.retcode == mt5.TRADE_RETCODE_DONE:
+                    logger.info(f"Successfully opened order with filling mode {filling_mode}")
+                    break
+                else:
+                    last_error = result
+                    if result.retcode == 10030:
+                        logger.warning(f"Filling mode {filling_mode} not supported, trying next mode...")
+                        continue
+                    else:
+                        logger.error(f"[SENSITIVE] Failed to open trade: Retcode={result.retcode}, Comment={result.comment}, Symbol={signal.symbol}, Direction={signal.direction}, LotSize={signal.lot_size:.2f}, FillingMode={filling_mode}")
+                        break
+            
+            if result is None or result.retcode != mt5.TRADE_RETCODE_DONE:
+                if last_error:
+                    logger.error(f"[SENSITIVE] Failed to open trade after trying all filling modes: Retcode={last_error.retcode}, Comment={last_error.comment}, Symbol={signal.symbol}, Direction={signal.direction}, LotSize={signal.lot_size:.2f}")
                 return None
             
             ticket = result.order
