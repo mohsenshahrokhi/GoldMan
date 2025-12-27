@@ -1,0 +1,229 @@
+import os
+import sys
+import asyncio
+from pathlib import Path
+
+try:
+    from dotenv import load_dotenv
+    DOTENV_AVAILABLE = True
+except ImportError:
+    DOTENV_AVAILABLE = False
+
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+
+from utils.logger import setup_logger, logger
+from core.bot import GoldManTradingBot
+from config.enums import StrategyType, SymbolType
+
+
+def create_env_file_if_not_exists():
+    env_path = Path('.env')
+    env_example_path = Path('.env.example')
+    
+    if env_path.exists():
+        return
+    
+    logger.info("Creating .env file from template...")
+    
+    env_content = """# GoldMan Trading Bot Configuration
+
+# Telegram Bot Configuration (Optional)
+# Get your token from @BotFather on Telegram
+# Only TOKEN is required, username is optional and set via @BotFather
+# Example: TELEGRAM_BOT_TOKEN=1234567890:ABCdefGHIjklMNOpqrsTUVwxyz
+TELEGRAM_BOT_TOKEN=
+
+# MetaTrader 5 Configuration
+# Your MT5 account login number
+MT5_LOGIN=
+# Your MT5 account password
+MT5_PASSWORD=
+# Your MT5 broker server name
+MT5_SERVER=
+"""
+    
+    try:
+        with open(env_path, 'w', encoding='utf-8') as f:
+            f.write(env_content)
+        logger.info(".env file created successfully. Please fill in your credentials.")
+    except Exception as e:
+        logger.error(f"Error creating .env file: {e}")
+    
+    if env_example_path.exists():
+        return
+    
+    try:
+        with open(env_example_path, 'w', encoding='utf-8') as f:
+            f.write(env_content)
+        logger.info(".env.example file created successfully.")
+    except Exception as e:
+        logger.warning(f"Error creating .env.example file: {e}")
+
+
+def load_environment():
+    create_env_file_if_not_exists()
+    
+    if DOTENV_AVAILABLE:
+        env_path = Path('.env')
+        if env_path.exists():
+            load_dotenv(env_path)
+            logger.info("Environment variables loaded from .env file")
+        else:
+            logger.warning(".env file not found. Using system environment variables.")
+    else:
+        logger.warning("python-dotenv not installed. Install it with: pip install python-dotenv")
+        logger.info("Using system environment variables only.")
+
+
+def get_strategy_input():
+    return input().strip()
+
+def get_symbol_input():
+    return input().strip()
+
+async def get_user_strategy_selection() -> StrategyType:
+    print("\n" + "="*50)
+    print("Select Trading Strategy:")
+    print("1. Day Trading")
+    print("2. Scalp")
+    print("3. Super Scalp")
+    print("="*50)
+    print("You have 10 seconds to select. Default: Day Trading")
+    print("Enter choice (1-3): ", end="", flush=True)
+    
+    try:
+        selection = await asyncio.wait_for(
+            asyncio.to_thread(get_strategy_input),
+            timeout=10.0
+        )
+        
+        if selection == "1":
+            return StrategyType.DAY_TRADING
+        elif selection == "2":
+            return StrategyType.SCALP
+        elif selection == "3":
+            return StrategyType.SUPER_SCALP
+        else:
+            logger.info("Invalid selection. Using default: Day Trading")
+            return StrategyType.DAY_TRADING
+    except asyncio.TimeoutError:
+        print("\nTimeout - Using default: Day Trading")
+        logger.info("Timeout - Using default strategy: Day Trading")
+        return StrategyType.DAY_TRADING
+    except Exception as e:
+        logger.warning(f"Error getting strategy selection: {e}. Using default: Day Trading")
+        return StrategyType.DAY_TRADING
+
+
+async def get_user_symbol_selection(bot: GoldManTradingBot) -> SymbolType:
+    print("\n" + "="*50)
+    print("Select Trading Symbol:")
+    print("1. XAUUSD (Gold)")
+    print("2. EURUSD")
+    print("3. YM (Dow Jones)")
+    print("4. BTCUSD (Bitcoin)")
+    print("="*50)
+    print("You have 10 seconds to select. Default: BTCUSD")
+    print("Enter choice (1-4): ", end="", flush=True)
+    
+    try:
+        selection = await asyncio.wait_for(
+            asyncio.to_thread(get_symbol_input),
+            timeout=10.0
+        )
+        
+        if selection == "1":
+            return SymbolType.XAUUSD
+        elif selection == "2":
+            return SymbolType.EURUSD
+        elif selection == "3":
+            return SymbolType.YM
+        elif selection == "4":
+            return SymbolType.BTCUSD
+        else:
+            logger.info("Invalid selection. Using default: BTCUSD")
+            return SymbolType.BTCUSD
+    except asyncio.TimeoutError:
+        print("\nTimeout - Using default: BTCUSD")
+        logger.info("Timeout - Using default symbol: BTCUSD")
+        return SymbolType.BTCUSD
+    except Exception as e:
+        logger.warning(f"Error getting symbol selection: {e}. Using default: BTCUSD")
+        return SymbolType.BTCUSD
+
+
+async def main():
+    setup_logger()
+    
+    load_environment()
+    
+    telegram_token = os.getenv('TELEGRAM_BOT_TOKEN')
+    telegram_token = telegram_token.strip() if telegram_token and telegram_token.strip() else None
+    
+    mt5_login = os.getenv('MT5_LOGIN')
+    mt5_login = int(mt5_login) if mt5_login and mt5_login.strip() else None
+    mt5_password = os.getenv('MT5_PASSWORD')
+    mt5_server = os.getenv('MT5_SERVER')
+    
+    bot = GoldManTradingBot(
+        telegram_token=telegram_token,
+        mt5_login=mt5_login,
+        mt5_password=mt5_password,
+        mt5_server=mt5_server
+    )
+    
+    try:
+        await bot.initialize()
+        
+        selected_strategy = None
+        selected_symbol = None
+        
+        logger.info(f"Telegram token status: {'SET' if telegram_token else 'NOT SET'}, Telegram Bot status: {'ACTIVE' if bot.telegram_bot else 'NOT ACTIVE'}")
+        
+        if telegram_token and bot.telegram_bot:
+            logger.info("Telegram Bot is active. Waiting for user selection via Telegram...")
+            logger.info("Send /start command to your Telegram bot to begin.")
+            try:
+                while True:
+                    await asyncio.sleep(1)
+                    if bot.is_running():
+                        logger.info("Bot started via Telegram!")
+                        break
+            except asyncio.CancelledError:
+                logger.info("Stop signal received...")
+        else:
+            if telegram_token:
+                logger.warning("Telegram token provided but Telegram Bot failed to initialize. Using console input instead.")
+            else:
+                logger.info("Telegram token not set. Using console input for selection.")
+            
+            selected_strategy = await get_user_strategy_selection()
+            logger.info(f"Selected strategy: {selected_strategy.value}")
+            
+            selected_symbol = await get_user_symbol_selection(bot)
+            logger.info(f"Selected symbol: {selected_symbol.value}")
+            
+            await bot.start_trading(selected_symbol, selected_strategy)
+            logger.info("Bot started successfully!")
+            
+            try:
+                while True:
+                    await asyncio.sleep(1)
+            except asyncio.CancelledError:
+                logger.info("Stop signal received...")
+    
+    except KeyboardInterrupt:
+        logger.info("Stop signal received (KeyboardInterrupt)...")
+    except asyncio.CancelledError:
+        logger.info("Stop signal received (CancelledError)...")
+    except Exception as e:
+        logger.error(f"Unexpected error: {e}", exc_info=True)
+    finally:
+        try:
+            await bot.stop()
+        except Exception as e:
+            logger.error(f"Error during bot shutdown: {e}", exc_info=True)
+
+
+if __name__ == "__main__":
+    asyncio.run(main())
