@@ -10,7 +10,7 @@ from config.enums import TimeFrame
 
 
 @dataclass
-class TradeSignal:
+class OrderSignal:
     """سیگنال معاملاتی"""
     symbol: str
     direction: str  # "BUY" or "SELL"

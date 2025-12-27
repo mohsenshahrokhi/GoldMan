@@ -214,7 +214,7 @@ class DatabaseManager:
         finally:
             cursor.close()
     
-    def save_trade(self, trade_data: Dict) -> bool:
+    def save_order(self, order_data: Dict) -> bool:
         try:
             with self.get_cursor() as cursor:
                 cursor.execute("""
@@ -246,7 +246,7 @@ class DatabaseManager:
             logger.error(f"Unexpected error saving trade: {e}, TradeData: {trade_data}")
             return False
     
-    def update_trade(self, ticket: int, updates: Dict) -> bool:
+    def update_order(self, ticket: int, updates: Dict) -> bool:
         if not updates:
             logger.warning(f"Empty updates dictionary for ticket {ticket}")
             return False
@@ -359,7 +359,7 @@ class DatabaseManager:
             logger.error(f"Unexpected error saving experience: {e}, Experience: {experience}")
             return False
     
-    def get_trade_count(self, symbol: str, strategy: str) -> int:
+    def get_order_count(self, symbol: str, strategy: str) -> int:
         try:
             with self.get_cursor() as cursor:
                 cursor.execute("""

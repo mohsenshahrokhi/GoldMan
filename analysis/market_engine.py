@@ -13,7 +13,7 @@ from utils.logger import logger
 from config.enums import TimeFrame
 
 
-class NDSEngine:
+class MarketEngine:
     
     def __init__(self, market_data_provider, db_manager):
         self.data_provider = market_data_provider

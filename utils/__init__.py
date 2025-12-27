@@ -3,12 +3,12 @@
 """
 
 from .logger import setup_logger, logger
-from .data_classes import TradeSignal, MarketData, AccountInfo
+from .data_classes import OrderSignal, MarketData, AccountInfo
 
 __all__ = [
     'setup_logger',
     'logger',
-    'TradeSignal',
+    'OrderSignal',
     'MarketData',
     'AccountInfo'
 ]

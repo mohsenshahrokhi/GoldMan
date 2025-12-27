@@ -12,7 +12,7 @@ except ImportError:
 from datetime import datetime
 
 if TYPE_CHECKING:
-    from analysis.nds_engine import NDSEngine
+    from analysis.market_engine import MarketEngine
 
 from utils.logger import logger
 from config.constants import (
@@ -70,7 +70,7 @@ class RiskManager:
     
     def calculate_sl_tp_node_based(self, entry_price: float, direction: str, 
                                    symbol: str, df: pd.DataFrame, 
-                                   nds_engine: 'NDSEngine',
+                                   market_engine: 'MarketEngine',
                                    safety_margin_points: float = 5.0,
                                    spread_factor: float = 1.0) -> Tuple[float, float]:
         if mt5 is None:
@@ -89,26 +89,26 @@ class RiskManager:
         adjustment = spread + safety_margin + commission
         
         if direction == "BUY":
-            sl_node = nds_engine.find_nearest_node(df, entry_price, "below")
+            sl_node = market_engine.find_nearest_node(df, entry_price, "below")
             if sl_node is None:
                 sl_node = entry_price * 0.995
             
             sl = sl_node - adjustment
             
-            tp_node = nds_engine.find_nearest_node(df, entry_price, "above")
+            tp_node = market_engine.find_nearest_node(df, entry_price, "above")
             if tp_node is None:
                 tp_node = entry_price * 1.005
             
             tp = tp_node - adjustment
         
         else:
-            sl_node = nds_engine.find_nearest_node(df, entry_price, "above")
+            sl_node = market_engine.find_nearest_node(df, entry_price, "above")
             if sl_node is None:
                 sl_node = entry_price * 1.005
             
             sl = sl_node + adjustment
             
-            tp_node = nds_engine.find_nearest_node(df, entry_price, "below")
+            tp_node = market_engine.find_nearest_node(df, entry_price, "below")
             if tp_node is None:
                 tp_node = entry_price * 0.995
             
@@ -199,7 +199,7 @@ class RiskManager:
         return tp
     
     def calculate_final_sl_tp(self, entry_price: float, direction: str, symbol: str,
-                             df: pd.DataFrame, nds_engine: 'NDSEngine',
+                             df: pd.DataFrame, market_engine: 'MarketEngine',
                              weights: Dict[str, float] = None,
                              parameters: Dict[str, float] = None) -> Tuple[float, float]:
         if weights is None or not weights:
@@ -227,7 +227,7 @@ class RiskManager:
         node_spread_factor = parameters.get('node_spread_factor', 1.0)
         
         sl_node, tp_node = self.calculate_sl_tp_node_based(
-            entry_price, direction, symbol, df, nds_engine,
+            entry_price, direction, symbol, df, market_engine,
             safety_margin_points=node_safety_margin,
             spread_factor=node_spread_factor
         )

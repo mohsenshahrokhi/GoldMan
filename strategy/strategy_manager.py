@@ -6,20 +6,20 @@ except ImportError:
     np = None
 
 from utils.logger import logger
-from utils.data_classes import TradeSignal
+from utils.data_classes import OrderSignal
 from config.enums import StrategyType, TimeFrame
 from config.constants import MIN_RR_RATIO
 from market.data_provider import MarketDataProvider
-from analysis.nds_engine import NDSEngine
+from analysis.market_engine import MarketEngine
 from risk.risk_manager import RiskManager
 
 
 class StrategyManager:
     
     def __init__(self, market_data_provider: MarketDataProvider, 
-                 nds_engine: NDSEngine, risk_manager: RiskManager):
+                 market_engine: MarketEngine, risk_manager: RiskManager):
         self.data_provider = market_data_provider
-        self.nds_engine = nds_engine
+        self.market_engine = market_engine
         self.risk_manager = risk_manager
         self.current_strategy = None
         self.current_symbol = None
@@ -62,7 +62,7 @@ class StrategyManager:
         self.current_symbol = symbol
         logger.info(f"Strategy {strategy.value} set for symbol {symbol}")
     
-    def analyze_market(self) -> Optional[TradeSignal]:
+    def analyze_market(self) -> Optional[OrderSignal]:
         if self.current_strategy is None or self.current_symbol is None:
             return None
         
@@ -100,7 +100,7 @@ class StrategyManager:
                     return None
                 continue
             
-            trend = self.nds_engine.detect_trend(df)
+            trend = self.market_engine.detect_trend(df)
             
             if self.current_strategy == StrategyType.SUPER_SCALP:
                 logger.info(f"[TREND] {tf.value}: {trend}")
@@ -111,7 +111,7 @@ class StrategyManager:
             
             trends.append(trend)
             
-            entry_point = self.nds_engine.find_entry_point(df, trend, tf)
+            entry_point = self.market_engine.find_entry_point(df, trend, tf)
             
             if entry_point is None:
                 if idx < sl_tp_timeframe_index:
@@ -200,7 +200,7 @@ class StrategyManager:
         
         sl, tp = self.risk_manager.calculate_final_sl_tp(
             final_entry, direction, self.current_symbol, df_sl_tp, 
-            self.nds_engine, weights, parameters
+            self.market_engine, weights, parameters
         )
         
         if sl == 0.0 or tp == 0.0:
@@ -243,7 +243,7 @@ class StrategyManager:
         else:
             logger.info(f"[MARKET_ANALYSIS] Trade Signal: {direction} Entry={final_entry:.5f}, SL={sl:.5f}, TP={tp:.5f}, R/R={rr_ratio:.2f}, Lot={lot_size:.2f}")
         
-        signal = TradeSignal(
+        signal = OrderSignal(
             symbol=self.current_symbol,
             direction=direction,
             entry_price=final_entry,
@@ -284,14 +284,14 @@ class StrategyManager:
         if df_weakness is None:
             return False, None
         
-        weakness_detected = self.nds_engine.detect_trend_weakness(df_weakness, tf_weakness)
+        weakness_detected = self.market_engine.detect_trend_weakness(df_weakness, tf_weakness)
         
         if weakness_detected:
             df_confirmation = self.data_provider.get_ohlc_data(self.current_symbol, tf_confirmation, 100)
             if df_confirmation is None:
                 return False, None
             
-            trend_change = self.nds_engine.detect_trend(df_confirmation) != self.nds_engine.detect_trend(df_weakness)
+            trend_change = self.market_engine.detect_trend(df_confirmation) != self.market_engine.detect_trend(df_weakness)
             
             if trend_change:
                 weakness_price = df_weakness['close'].iloc[-1]

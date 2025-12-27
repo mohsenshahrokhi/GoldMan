@@ -8,18 +8,18 @@ except ImportError:
 from datetime import datetime
 
 from utils.logger import logger
-from utils.data_classes import TradeSignal
+from utils.data_classes import OrderSignal
 from config.constants import MIN_RR_RATIO
 from config.enums import TimeFrame
 from connection.mt5_manager import ConnectionManager
 from database.manager import DatabaseManager
 from strategy.strategy_manager import StrategyManager
 from risk.risk_manager import RiskManager
-from analysis.nds_engine import NDSEngine
+from analysis.market_engine import MarketEngine
 from market.data_provider import MarketDataProvider
 
 
-class TradeExecutor:
+class OrderExecutor:
     
     def __init__(self, connection_manager: ConnectionManager, db_manager: DatabaseManager):
         self.conn_mgr = connection_manager
@@ -69,7 +69,7 @@ class TradeExecutor:
             positions = [p for p in positions if p.symbol == symbol]
         return len(positions) > 0
     
-    def execute_trade(self, signal: TradeSignal) -> Optional[int]:
+    def execute_trade(self, signal: OrderSignal) -> Optional[int]:
         if not self.pre_trade_validation(signal):
             return None
         
@@ -138,7 +138,7 @@ class TradeExecutor:
             account_info = self.conn_mgr.get_account_info()
             logger.info(f"[SENSITIVE] Trade opened successfully: Ticket={ticket}, Symbol={signal.symbol}, Direction={signal.direction}, Entry={price:.5f}, SL={sl:.5f}, TP={tp:.5f}, LotSize={signal.lot_size:.2f}, SLDistance={sl_pips:.1f}pips, TPDistance={tp_pips:.1f}pips, RiskAmount=${risk_amount:.2f}, RewardAmount=${reward_amount:.2f}, R/R={signal.confidence:.2f}, Balance={account_info.balance:.2f}, Equity={account_info.equity:.2f}, FreeMargin={account_info.free_margin:.2f}, MarginLevel={account_info.margin_level:.2f}%")
             
-            if not self.db.save_trade({
+            if not self.db.save_order({
                 'ticket': ticket,
                 'symbol': signal.symbol,
                 'direction': signal.direction,
@@ -158,7 +158,7 @@ class TradeExecutor:
             logger.error(f"Error executing trade: {e}")
             return None
     
-    def pre_trade_validation(self, signal: TradeSignal) -> bool:
+    def pre_trade_validation(self, signal: OrderSignal) -> bool:
         if self.has_open_position(signal.symbol):
             logger.info("Active position exists")
             return False
@@ -198,7 +198,7 @@ class TradeExecutor:
         return True
     
     def manage_position(self, ticket: int, strategy_manager: StrategyManager, 
-                       risk_manager: RiskManager, nds_engine: NDSEngine) -> bool:
+                       risk_manager: RiskManager, nds_engine: MarketEngine) -> bool:
         if mt5 is None:
             return False
             
@@ -244,7 +244,7 @@ class TradeExecutor:
             return False
     
     def apply_trailing_stop(self, position: Any, profit_pct: float, 
-                           risk_manager: RiskManager, nds_engine: NDSEngine):
+                           risk_manager: RiskManager, nds_engine: MarketEngine):
         if mt5 is None or self.data_provider is None:
             return
             
@@ -426,7 +426,7 @@ class TradeExecutor:
     def check_close_and_reopen(self, position: Any, profit_pct: float, 
                                strategy_manager: StrategyManager, 
                                risk_manager: RiskManager, 
-                               nds_engine: NDSEngine) -> bool:
+                               nds_engine: MarketEngine) -> bool:
         if profit_pct < 80:
             return False
         
@@ -536,7 +536,7 @@ class TradeExecutor:
                 else:
                     logger.info(f"[SENSITIVE] Position closed successfully: Ticket={ticket}, Symbol={symbol}, Volume={volume:.2f}")
                 
-                if not self.db.update_trade(ticket, {
+                if not self.db.update_order(ticket, {
                     'status': 'CLOSED',
                     'exit_time': datetime.now(),
                     'exit_price': price

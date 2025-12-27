@@ -1,8 +1,8 @@
 """
-ماژول تحلیل تکنیکال و NDS
+ماژول تحلیل تکنیکال و بازار
 """
 
-from .nds_engine import NDSEngine
+from .market_engine import MarketEngine
 
-__all__ = ['NDSEngine']
+__all__ = ['MarketEngine']
 

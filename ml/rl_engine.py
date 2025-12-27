@@ -54,7 +54,7 @@ class RLEngine:
             'min_rr_ratio': 1.5,
             'max_risk_per_trade': 0.005,
             'nds_lookback': 20.0,
-            'nds_trend_period': 20.0,
+            'market_trend_period': 20.0,
             'trailing_stop_threshold_1': 10.0,
             'trailing_stop_threshold_2': 15.0,
             'trailing_stop_threshold_3': 50.0,
@@ -78,7 +78,7 @@ class RLEngine:
             'min_rr_ratio': (1.2, 2.5),
             'max_risk_per_trade': (0.001, 0.05),
             'nds_lookback': (10.0, 50.0),
-            'nds_trend_period': (10.0, 30.0),
+            'market_trend_period': (10.0, 30.0),
             'trailing_stop_threshold_1': (5.0, 15.0),
             'trailing_stop_threshold_2': (10.0, 20.0),
             'trailing_stop_threshold_3': (40.0, 60.0),
@@ -609,7 +609,7 @@ class RLEngine:
         return final_weights
     
     def should_optimize(self, symbol: str, strategy: str) -> bool:
-        trade_count = self.db.get_trade_count(symbol, strategy)
+        trade_count = self.db.get_order_count(symbol, strategy)
         return trade_count >= self.trade_count_threshold and trade_count % self.trade_count_threshold == 0
     
     def save_experience(self, symbol: str, strategy: str, timeframe: str,

@@ -15,10 +15,10 @@ from connection.mt5_manager import ConnectionManager
 from market.symbol_manager import SymbolManager
 from market.data_provider import MarketDataProvider
 from market.calendar_filter import CalendarFilter
-from analysis.nds_engine import NDSEngine
+from analysis.market_engine import MarketEngine
 from risk.risk_manager import RiskManager
 from strategy.strategy_manager import StrategyManager
-from trading.trade_executor import TradeExecutor
+from execution.order_executor import OrderExecutor
 from ml.rl_engine import RLEngine
 from reporting.performance_reporter import PerformanceReporter
 from telegram_bot.bot import TelegramBot
@@ -32,10 +32,10 @@ class GoldManTradingBot:
         self.conn_mgr = ConnectionManager()
         self.symbol_mgr = None
         self.data_provider = None
-        self.nds_engine = None
+        self.market_engine = None
         self.risk_manager = None
         self.strategy_manager = None
-        self.trade_executor = None
+        self.order_executor = None
         self.rl_engine = None
         self.reporter = None
         self.telegram_bot = None
@@ -68,16 +68,16 @@ class GoldManTradingBot:
         
         self.data_provider = MarketDataProvider(self.conn_mgr)
         
-        self.nds_engine = NDSEngine(self.data_provider, self.db_manager)
+        self.market_engine = MarketEngine(self.data_provider, self.db_manager)
         
         self.risk_manager = RiskManager(self.conn_mgr, self.db_manager)
         
         self.strategy_manager = StrategyManager(
-            self.data_provider, self.nds_engine, self.risk_manager
+            self.data_provider, self.market_engine, self.risk_manager
         )
         
-        self.trade_executor = TradeExecutor(self.conn_mgr, self.db_manager)
-        self.trade_executor.set_data_provider(self.data_provider)
+        self.order_executor = OrderExecutor(self.conn_mgr, self.db_manager)
+        self.order_executor.set_data_provider(self.data_provider)
         
         self.rl_engine = RLEngine(self.db_manager)
         
@@ -102,12 +102,12 @@ class GoldManTradingBot:
         self.strategy_manager.set_strategy(strategy, symbol_name)
         logger.info(f"[SENSITIVE] Strategy changed: Symbol={symbol_name}, OldStrategy={old_strategy}, NewStrategy={strategy.value}")
         
-        if self.trade_executor.has_open_position(symbol_name):
+        if self.order_executor.has_open_position(symbol_name):
             logger.info("Open position exists. Managing position...")
-            positions = self.trade_executor.get_open_positions()
+            positions = self.order_executor.get_open_positions()
             for pos in positions:
                 if pos.symbol == symbol_name:
-                    self.trade_executor.current_position = pos.ticket
+                    self.order_executor.current_position = pos.ticket
                     break
         
         self.running = True
@@ -141,13 +141,13 @@ class GoldManTradingBot:
                     continue
                 
                 symbol_name = self.symbol_mgr.get_symbol_name(self.current_symbol)
-                if self.trade_executor.has_open_position(symbol_name):
-                    if self.trade_executor.current_position:
-                        self.trade_executor.manage_position(
-                            self.trade_executor.current_position,
+                if self.order_executor.has_open_position(symbol_name):
+                    if self.order_executor.current_position:
+                        self.order_executor.manage_position(
+                            self.order_executor.current_position,
                             self.strategy_manager,
                             self.risk_manager,
-                            self.nds_engine
+                            self.market_engine
                         )
                     await asyncio.sleep(1)
                     continue
@@ -212,7 +212,7 @@ class GoldManTradingBot:
                     
                     logger.info(f"[TRADE_ENTRY] Pre-trade validation passed. Proceeding to execute trade.")
                     
-                    ticket = self.trade_executor.execute_trade(signal)
+                    ticket = self.order_executor.execute_trade(signal)
                     
                     if ticket:
                         logger.info(f"[MAIN_LOOP] Trade opened successfully: Ticket {ticket}")
@@ -266,7 +266,7 @@ class GoldManTradingBot:
     async def monitoring_loop(self):
         while self.running:
             try:
-                positions = self.trade_executor.get_open_positions()
+                positions = self.order_executor.get_open_positions()
                 closed_positions = []
                 
                 cursor = self.db_manager.conn.cursor()
@@ -288,7 +288,7 @@ class GoldManTradingBot:
                                 total_profit = sum(d.profit for d in deals)
                                 account_info = self.conn_mgr.get_account_info()
                                 logger.info(f"[SENSITIVE] Trade closed: Ticket={ticket}, TotalProfit={total_profit:.2f}, Balance={account_info.balance:.2f}, Equity={account_info.equity:.2f}")
-                                if not self.db_manager.update_trade(ticket, {
+                                if not self.db_manager.update_order(ticket, {
                                     'status': 'CLOSED',
                                     'exit_time': datetime.now(),
                                     'profit': total_profit
@@ -304,11 +304,11 @@ class GoldManTradingBot:
     async def switch_symbol(self, new_symbol: SymbolType):
         old_symbol_name = self.symbol_mgr.get_symbol_name(self.current_symbol)
         
-        if self.trade_executor.has_open_position(old_symbol_name):
-            positions = self.trade_executor.get_open_positions()
+        if self.order_executor.has_open_position(old_symbol_name):
+            positions = self.order_executor.get_open_positions()
             for pos in positions:
                 if pos.symbol == old_symbol_name:
-                    self.trade_executor.frozen_positions.append(pos.ticket)
+                    self.order_executor.frozen_positions.append(pos.ticket)
                     logger.info(f"Position {pos.ticket} frozen")
         
         if self.symbol_mgr.switch_symbol(new_symbol):

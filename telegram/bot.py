@@ -17,8 +17,6 @@ from ._telegram_import import (
     InlineKeyboardMarkup
 )
 
-from ._telegram_import import Conflict
-
 from utils.logger import logger
 from config.enums import SymbolType, StrategyType
 from config.constants import SELECTION_TIMEOUT
@@ -29,9 +27,7 @@ class TelegramBot:
     
     def __init__(self, token: str, main_controller):
         if not TELEGRAM_AVAILABLE:
-            error_msg = "python-telegram-bot is not installed. Please install it with: pip install python-telegram-bot"
-            logger.error(error_msg)
-            raise ImportError(error_msg)
+            raise ImportError("python-telegram-bot is not installed. Please install it with: pip install python-telegram-bot")
             
         self.token = token
         self.main_controller = main_controller
@@ -40,20 +36,10 @@ class TelegramBot:
         self.selected_strategy = None
         self.selection_timeout = SELECTION_TIMEOUT
         self.selection_timer = None
-        self.event_loop = None
-        logger.info("TelegramBot initialized successfully")
     
     async def start(self):
         """شروع ربات تلگرام"""
         self.application = Application.builder().token(self.token).build()
-        
-        # حذف webhook در صورت وجود و صبر برای اطمینان
-        try:
-            await self.application.bot.delete_webhook(drop_pending_updates=True)
-            logger.info("Webhook deleted (if existed)")
-            await asyncio.sleep(2)  # صبر 2 ثانیه برای اطمینان از حذف webhook
-        except Exception as e:
-            logger.warning(f"Error deleting webhook: {e}")
         
         # اضافه کردن handlers
         self.application.add_handler(CommandHandler("start", self.start_command))
@@ -65,77 +51,9 @@ class TelegramBot:
         
         await self.application.initialize()
         await self.application.start()
+        await self.application.updater.start_polling()
         
-        # ذخیره event loop برای استفاده در timer callbacks
-        try:
-            self.event_loop = self.application.updater._network_loop._loop
-        except:
-            self.event_loop = asyncio.get_event_loop()
-        
-        # بررسی conflict قبل از شروع polling
-        max_retries = 5
-        retry_count = 0
-        
-        while retry_count < max_retries:
-            try:
-                # تست کردن getUpdates قبل از شروع polling
-                test_updates = await self.application.bot.get_updates(limit=1, timeout=1)
-                logger.info("Bot is ready. No conflicts detected.")
-                break
-            except Exception as e:
-                if "Conflict" in str(e):
-                    retry_count += 1
-                    if retry_count < max_retries:
-                        wait_time = retry_count * 3
-                        logger.warning(f"Conflict detected. Waiting {wait_time} seconds before retry... (Attempt {retry_count}/{max_retries})")
-                        await asyncio.sleep(wait_time)
-                        # حذف webhook دوباره
-                        try:
-                            await self.application.bot.delete_webhook(drop_pending_updates=True)
-                            await asyncio.sleep(1)
-                        except:
-                            pass
-                    else:
-                        logger.error(f"Failed to resolve conflict after {max_retries} attempts")
-                        logger.warning("Please:")
-                        logger.warning("1. Stop all other bot instances")
-                        logger.warning("2. Wait 20-30 seconds")
-                        logger.warning("3. Run 'python check_bot_instances.py' to verify")
-                        logger.warning("4. Restart the bot")
-                        raise Exception("Telegram bot conflict could not be resolved. Please check for other running instances.")
-                else:
-                    logger.warning(f"Unexpected error during conflict check: {e}")
-                    break
-        
-        # اضافه کردن error handler برای conflict
-        async def error_handler(update: object, context: Any) -> None:
-            error = context.error
-            if isinstance(error, Conflict):
-                logger.error("Conflict detected during polling. This usually means another bot instance is running.")
-                logger.warning("The bot will continue trying to reconnect. Please stop other instances.")
-            else:
-                logger.error(f"Unhandled error in Telegram bot: {error}")
-        
-        self.application.add_error_handler(error_handler)
-        
-        # صبر کوتاه قبل از شروع polling
-        await asyncio.sleep(2)
-        
-        # شروع polling
-        try:
-            await self.application.updater.start_polling(
-                drop_pending_updates=True,
-                allowed_updates=["message", "callback_query"],
-                poll_interval=1.0,
-                timeout=10
-            )
-            logger.info("Telegram bot started successfully")
-        except Exception as e:
-            if "Conflict" in str(e) or isinstance(e, Conflict):
-                logger.error("Conflict detected during polling startup.")
-                logger.warning("Please stop all other bot instances and wait 20-30 seconds before restarting.")
-            logger.error(f"Error starting polling: {e}")
-            raise
+        logger.info("Telegram bot started")
     
     async def stop(self):
         """توقف ربات تلگرام"""
@@ -172,21 +90,9 @@ class TelegramBot:
             reply_markup=reply_markup
         )
         
-        def timer_callback():
-            try:
-                if self.event_loop and self.event_loop.is_running():
-                    asyncio.run_coroutine_threadsafe(
-                        self.default_strategy_selection(update),
-                        self.event_loop
-                    )
-                else:
-                    logger.warning("Event loop not available for timer callback")
-            except Exception as e:
-                logger.error(f"Error in timer callback: {e}")
-        
         self.selection_timer = threading.Timer(
             self.selection_timeout,
-            timer_callback
+            lambda: asyncio.create_task(self.default_strategy_selection(update))
         )
         self.selection_timer.start()
     
@@ -203,80 +109,44 @@ class TelegramBot:
     async def button_callback(self, update: 'Update', context: Any):
         """پردازش کلیک دکمه"""
         query = update.callback_query
-        if query is None:
-            logger.error("Callback query is None")
-            return
-        
         await query.answer()
         
         data = query.data
-        if data is None:
-            logger.error("Callback data is None")
-            return
-        
-        logger.info(f"Button callback received: {data}")
         
         if data.startswith("strategy_"):
-            strategy_name = data.replace("strategy_", "")
-            logger.info(f"Strategy selected: {strategy_name}")
-            
+            strategy_name = data.split("_")[1]
             if strategy_name == "DAY_TRADING":
                 self.selected_strategy = StrategyType.DAY_TRADING
             elif strategy_name == "SCALP":
                 self.selected_strategy = StrategyType.SCALP
             elif strategy_name == "SUPER_SCALP":
                 self.selected_strategy = StrategyType.SUPER_SCALP
-            else:
-                logger.error(f"Unknown strategy: {strategy_name}")
-                await query.edit_message_text(f"❌ استراتژی نامعتبر: {strategy_name}")
-                return
             
             if self.selection_timer:
                 self.selection_timer.cancel()
             
-            try:
-                await query.edit_message_text(
-                    f"✅ استراتژی: {self.selected_strategy.value}\n\n"
-                    "در حال نمایش منوی انتخاب نماد..."
-                )
-                await self.show_symbol_menu(query)
-            except Exception as e:
-                logger.error(f"Error in strategy selection: {e}", exc_info=True)
-                await query.edit_message_text(f"❌ خطا در انتخاب استراتژی: {e}")
+            await query.edit_message_text(
+                f"✅ استراتژی: {self.selected_strategy.value}\n\n"
+                "در حال نمایش منوی انتخاب نماد..."
+            )
+            await self.show_symbol_menu(query)
         
         elif data.startswith("symbol_"):
-            symbol_name = data.replace("symbol_", "")
-            logger.info(f"Symbol selected: {symbol_name}")
-            
-            try:
-                self.selected_symbol = SymbolType[symbol_name]
-            except KeyError:
-                logger.error(f"Unknown symbol: {symbol_name}")
-                await query.edit_message_text(f"❌ نماد نامعتبر: {symbol_name}")
-                return
-            
-            if self.selected_strategy is None:
-                logger.error("Strategy not selected before symbol selection")
-                await query.edit_message_text("❌ لطفاً ابتدا استراتژی را انتخاب کنید.")
-                return
-            
+            symbol_name = data.split("_")[1]
+            self.selected_symbol = SymbolType[symbol_name]
             if self.selection_timer:
                 self.selection_timer.cancel()
             
-            try:
-                await query.edit_message_text(
-                    f"✅ استراتژی: {self.selected_strategy.value}\n"
-                    f"✅ نماد: {self.selected_symbol.value}\n\n"
-                    "🚀 در حال راه‌اندازی ربات..."
-                )
-                
-                await self.main_controller.start_trading(
-                    self.selected_symbol,
-                    self.selected_strategy
-                )
-            except Exception as e:
-                logger.error(f"Error starting trading: {e}", exc_info=True)
-                await query.edit_message_text(f"❌ خطا در راه‌اندازی ربات: {e}")
+            await query.edit_message_text(
+                f"✅ استراتژی: {self.selected_strategy.value}\n"
+                f"✅ نماد: {self.selected_symbol.value}\n\n"
+                "🚀 در حال راه‌اندازی ربات..."
+            )
+            
+            await self.main_controller.start_trading(
+                self.selected_symbol,
+                self.selected_strategy
+            )
         
         elif data.startswith("report_"):
             report_type = data.split("_")[1]
@@ -300,7 +170,7 @@ class TelegramBot:
         elif data == "stop_cancel":
             await query.edit_message_text("✅ توقف لغو شد.")
     
-    async def show_symbol_menu(self, query_or_update):
+    async def show_symbol_menu(self, query):
         """نمایش منوی انتخاب نماد"""
         keyboard = [
             [
@@ -314,56 +184,30 @@ class TelegramBot:
         ]
         reply_markup = InlineKeyboardMarkup(keyboard)
         
-        if hasattr(query_or_update, 'edit_message_text'):
-            await query_or_update.edit_message_text(
-                f"✅ استراتژی: {self.selected_strategy.value}\n\n"
-                "لطفاً نماد معاملاتی را انتخاب کنید:\n"
-                f"⏱️ زمان باقیمانده: {self.selection_timeout} ثانیه\n"
-                "در صورت عدم انتخاب، BTCUSD به عنوان پیش‌فرض انتخاب می‌شود.",
-                reply_markup=reply_markup
-            )
-        elif hasattr(query_or_update, 'message'):
-            await query_or_update.message.reply_text(
-                f"✅ استراتژی: {self.selected_strategy.value}\n\n"
-                "لطفاً نماد معاملاتی را انتخاب کنید:\n"
-                f"⏱️ زمان باقیمانده: {self.selection_timeout} ثانیه\n"
-                "در صورت عدم انتخاب، BTCUSD به عنوان پیش‌فرض انتخاب می‌شود.",
-                reply_markup=reply_markup
-            )
-        
-        def timer_callback():
-            try:
-                if self.event_loop and self.event_loop.is_running():
-                    asyncio.run_coroutine_threadsafe(
-                        self.default_symbol_selection(query_or_update),
-                        self.event_loop
-                    )
-                else:
-                    logger.warning("Event loop not available for timer callback")
-            except Exception as e:
-                logger.error(f"Error in timer callback: {e}")
+        await query.edit_message_text(
+            f"✅ استراتژی: {self.selected_strategy.value}\n\n"
+            "لطفاً نماد معاملاتی را انتخاب کنید:\n"
+            f"⏱️ زمان باقیمانده: {self.selection_timeout} ثانیه\n"
+            "در صورت عدم انتخاب، BTCUSD به عنوان پیش‌فرض انتخاب می‌شود.",
+            reply_markup=reply_markup
+        )
         
         self.selection_timer = threading.Timer(
             self.selection_timeout,
-            timer_callback
+            lambda: asyncio.create_task(self.default_symbol_selection(query))
         )
         self.selection_timer.start()
     
-    async def default_symbol_selection(self, query_or_update):
+    async def default_symbol_selection(self, query):
         """انتخاب نماد پیش‌فرض در صورت عدم انتخاب"""
         if not self.selected_symbol:
             self.selected_symbol = SymbolType.BTCUSD
         
-        message_text = (
+        await query.edit_message_text(
             f"✅ استراتژی: {self.selected_strategy.value}\n"
             f"✅ نماد: {self.selected_symbol.value} (پیش‌فرض)\n\n"
             "🚀 در حال راه‌اندازی ربات..."
         )
-        
-        if hasattr(query_or_update, 'edit_message_text'):
-            await query_or_update.edit_message_text(message_text)
-        elif hasattr(query_or_update, 'message'):
-            await query_or_update.message.reply_text(message_text)
         
         await self.main_controller.start_trading(
             self.selected_symbol,
@@ -390,7 +234,7 @@ class TelegramBot:
 📈 معاملات:
 • نماد فعلی: {self.main_controller.current_symbol.value if self.main_controller.current_symbol else 'N/A'}
 • استراتژی: {self.main_controller.current_strategy.value if self.main_controller.current_strategy else 'N/A'}
-• معامله باز: {'✅ بله' if self.main_controller.order_executor.has_open_position() else '❌ خیر'}
+• معامله باز: {'✅ بله' if self.main_controller.trade_executor.has_open_position() else '❌ خیر'}
 """
         else:
             status_text = "❌ خطا در دریافت اطلاعات حساب"
