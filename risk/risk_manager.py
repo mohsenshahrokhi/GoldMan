@@ -308,12 +308,38 @@ class RiskManager:
                     valid_tp_values.append(('garch', tp_garch, weights['garch']))
         
         if not valid_sl_values or not valid_tp_values:
+            if strategy == "SUPER_SCALP":
+                max_sl_distance = entry_price * 0.01
+                max_tp_distance = entry_price * 0.02
+            elif strategy == "SCALP":
+                max_sl_distance = entry_price * 0.02
+                max_tp_distance = entry_price * 0.04
+            else:
+                max_sl_distance = entry_price * 0.05
+                max_tp_distance = entry_price * 0.10
+            
             if sl_atr != 0.0 and tp_atr != 0.0:
-                return sl_atr, tp_atr
+                sl_fallback = sl_atr
+                tp_fallback = tp_atr
             elif sl_node != 0.0 and tp_node != 0.0:
-                return sl_node, tp_node
+                sl_fallback = sl_node
+                tp_fallback = tp_node
             else:
                 return 0.0, 0.0
+            
+            if strategy == "SUPER_SCALP" or strategy == "SCALP":
+                if direction == "BUY":
+                    if sl_fallback < entry_price - max_sl_distance:
+                        sl_fallback = entry_price - max_sl_distance
+                    if tp_fallback > entry_price + max_tp_distance:
+                        tp_fallback = entry_price + max_tp_distance
+                else:
+                    if sl_fallback > entry_price + max_sl_distance:
+                        sl_fallback = entry_price + max_sl_distance
+                    if tp_fallback < entry_price - max_tp_distance:
+                        tp_fallback = entry_price - max_tp_distance
+            
+            return sl_fallback, tp_fallback
         
         total_sl_weight = sum(w for _, _, w in valid_sl_values)
         total_tp_weight = sum(w for _, _, w in valid_tp_values)
