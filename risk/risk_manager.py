@@ -321,21 +321,6 @@ class RiskManager:
         sl_final = sum(sl * w for _, sl, w in valid_sl_values) / total_sl_weight if total_sl_weight > 0 else entry_price * 0.99
         tp_weighted = sum(tp * w for _, tp, w in valid_tp_values) / total_tp_weight if total_tp_weight > 0 else entry_price * 1.01
         
-        if strategy == "SUPER_SCALP":
-            if direction == "BUY":
-                sl_final = max(sl_final, entry_price - max_sl_distance)
-                tp_weighted = min(tp_weighted, entry_price + max_tp_distance)
-            else:
-                sl_final = min(sl_final, entry_price + max_sl_distance)
-                tp_weighted = max(tp_weighted, entry_price - max_tp_distance)
-        elif strategy == "SCALP":
-            if direction == "BUY":
-                sl_final = max(sl_final, entry_price - max_sl_distance)
-                tp_weighted = min(tp_weighted, entry_price + max_tp_distance)
-            else:
-                sl_final = min(sl_final, entry_price + max_sl_distance)
-                tp_weighted = max(tp_weighted, entry_price - max_tp_distance)
-        
         min_rr_ratio = parameters.get('min_rr_ratio', MIN_RR_RATIO)
         tp_fixed = self.calculate_sl_tp_fixed_rr(entry_price, sl_final, min_rr_ratio)
         
