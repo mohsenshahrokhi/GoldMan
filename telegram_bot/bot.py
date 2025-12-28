@@ -490,16 +490,66 @@ class TelegramBot:
             reply_markup=reply_markup
         )
     
+    async def add_channel_command(self, update: 'Update', context: Any):
+        """دستور /add_channel - اضافه کردن کانال برای دریافت اعلان‌ها"""
+        if not update.message:
+            return
+        
+        chat_id = update.message.chat_id
+        self.chat_ids.add(chat_id)
+        
+        chat_type = "channel" if update.message.chat.type == "channel" else "group" if update.message.chat.type == "group" else "private"
+        
+        await update.message.reply_text(
+            f"✅ Chat ID اضافه شد:\n"
+            f"• Chat ID: `{chat_id}`\n"
+            f"• Type: {chat_type}\n"
+            f"• Title: {update.message.chat.title if hasattr(update.message.chat, 'title') else 'N/A'}\n\n"
+            f"از این به بعد تمام اعلان‌های ربات به این chat ارسال می‌شود.",
+            parse_mode='Markdown'
+        )
+        
+        logger.info(f"Chat ID added: {chat_id} (Type: {chat_type})")
+    
+    async def get_chat_id_command(self, update: 'Update', context: Any):
+        """دستور /get_chat_id - دریافت Chat ID"""
+        if not update.message:
+            return
+        
+        chat_id = update.message.chat_id
+        chat_type = update.message.chat.type if hasattr(update.message.chat, 'type') else "unknown"
+        chat_title = update.message.chat.title if hasattr(update.message.chat, 'title') else 'N/A'
+        chat_username = update.message.chat.username if hasattr(update.message.chat, 'username') else 'N/A'
+        
+        message = f"""📋 <b>Chat Information:</b>
+
+• <b>Chat ID:</b> <code>{chat_id}</code>
+• <b>Type:</b> {chat_type}
+• <b>Title:</b> {chat_title}
+• <b>Username:</b> @{chat_username if chat_username != 'N/A' else 'N/A'}
+
+💡 <b>برای اضافه کردن این chat به لیست اعلان‌ها:</b>
+دستور <code>/add_channel</code> را ارسال کنید.
+
+📝 <b>برای استفاده در .env:</b>
+<code>TELEGRAM_CHAT_ID={chat_id}</code>"""
+        
+        await update.message.reply_text(message, parse_mode='HTML')
+        
+        logger.info(f"Chat ID requested: {chat_id} (Type: {chat_type})")
+    
     async def send_message(self, chat_id: int, text: str):
         """ارسال پیام به کاربر"""
         if self.application:
             await self.application.bot.send_message(chat_id=chat_id, text=text)
     
     async def send_notification(self, message: str, parse_mode: str = 'HTML'):
-        """ارسال اعلان به همه کاربران"""
+        """ارسال اعلان به همه کاربران و کانال‌ها"""
         if not self.application or not self.chat_ids:
+            logger.warning("No chat_ids registered. Use /add_channel command or set TELEGRAM_CHAT_ID in .env")
             return
         
+        success_count = 0
         for chat_id in self.chat_ids:
             try:
                 await self.application.bot.send_message(
@@ -507,8 +557,20 @@ class TelegramBot:
                     text=message,
                     parse_mode=parse_mode
                 )
+                success_count += 1
+                logger.debug(f"Notification sent successfully to chat_id: {chat_id}")
             except Exception as e:
-                logger.error(f"Error sending notification to {chat_id}: {e}")
+                error_msg = str(e)
+                if "chat not found" in error_msg.lower() or "bot was blocked" in error_msg.lower():
+                    logger.warning(f"Chat {chat_id} not accessible. Removing from list. Error: {e}")
+                    self.chat_ids.discard(chat_id)
+                else:
+                    logger.error(f"Error sending notification to {chat_id}: {e}")
+        
+        if success_count > 0:
+            logger.info(f"Notification sent to {success_count} chat(s)")
+        else:
+            logger.warning("No notifications were sent successfully")
     
     async def send_status_message(self, chat_id: int, is_start: bool = True):
         """ارسال پیام وضعیت با اطلاعات حساب و معاملات"""
