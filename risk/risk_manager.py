@@ -91,7 +91,7 @@ class RiskManager:
         
         adjustment = spread + safety_margin + commission
         
-        if strategy == "SUPER_SCALP" and max_sl_distance and max_tp_distance:
+        if (strategy == "SUPER_SCALP" or strategy == "Super Scalp") and max_sl_distance and max_tp_distance:
             sl_fallback = entry_price - max_sl_distance
             tp_fallback = entry_price + max_tp_distance
         elif strategy == "SCALP" or strategy == "Scalp":
@@ -106,7 +106,7 @@ class RiskManager:
             if sl_node is None:
                 sl_node = sl_fallback
             else:
-                if strategy == "SUPER_SCALP" and max_sl_distance:
+                if (strategy == "SUPER_SCALP" or strategy == "Super Scalp") and max_sl_distance:
                     if abs(sl_node - entry_price) > max_sl_distance:
                         sl_node = sl_fallback
                 elif abs(sl_node - entry_price) > entry_price * 0.01:
@@ -118,7 +118,7 @@ class RiskManager:
             if tp_node is None:
                 tp_node = tp_fallback
             else:
-                if strategy == "SUPER_SCALP" and max_tp_distance:
+                if (strategy == "SUPER_SCALP" or strategy == "Super Scalp") and max_tp_distance:
                     if abs(tp_node - entry_price) > max_tp_distance:
                         tp_node = tp_fallback
                 elif abs(tp_node - entry_price) > entry_price * 0.02:
@@ -131,7 +131,7 @@ class RiskManager:
             if sl_node is None:
                 sl_node = entry_price + abs(entry_price - sl_fallback)
             else:
-                max_sl_check = max_sl_distance if (strategy == "SUPER_SCALP" and max_sl_distance) else (entry_price * 0.01)
+                max_sl_check = max_sl_distance if ((strategy == "SUPER_SCALP" or strategy == "Super Scalp") and max_sl_distance) else (entry_price * 0.01)
                 if abs(sl_node - entry_price) > max_sl_check:
                     sl_node = entry_price + abs(entry_price - sl_fallback)
             
@@ -141,7 +141,7 @@ class RiskManager:
             if tp_node is None:
                 tp_node = entry_price - abs(entry_price - tp_fallback)
             else:
-                max_tp_check = max_tp_distance if (strategy == "SUPER_SCALP" and max_tp_distance) else (entry_price * 0.02)
+                max_tp_check = max_tp_distance if ((strategy == "SUPER_SCALP" or strategy == "Super Scalp") and max_tp_distance) else (entry_price * 0.02)
                 if abs(tp_node - entry_price) > max_tp_check:
                     tp_node = entry_price - abs(entry_price - tp_fallback)
             
@@ -363,7 +363,7 @@ class RiskManager:
             else:
                 return 0.0, 0.0
             
-            if strategy == "SUPER_SCALP" or strategy == "SCALP":
+            if (strategy == "SUPER_SCALP" or strategy == "Super Scalp") or (strategy == "SCALP" or strategy == "Scalp"):
                 if direction == "BUY":
                     if sl_fallback < entry_price - max_sl_distance:
                         sl_fallback = entry_price - max_sl_distance
@@ -415,7 +415,7 @@ class RiskManager:
             tp_fixed_forced = self.calculate_sl_tp_fixed_rr(entry_price, sl_final, min_rr_ratio)
             if tp_fixed_forced != 0.0:
                 if (direction == "BUY" and tp_fixed_forced > entry_price) or (direction == "SELL" and tp_fixed_forced < entry_price):
-                    max_tp_for_forced = entry_price * 0.008 if strategy == "SUPER_SCALP" else (entry_price * 0.05 if strategy == "SCALP" else entry_price * 0.15)
+                    max_tp_for_forced = entry_price * 0.008 if (strategy == "SUPER_SCALP" or strategy == "Super Scalp") else (entry_price * 0.05 if (strategy == "SCALP" or strategy == "Scalp") else entry_price * 0.15)
                     if abs(tp_fixed_forced - entry_price) < max_tp_for_forced:
                         tp_final = tp_fixed_forced
                         logger.debug(f"[SL_TP] Forced TP adjustment to meet min R/R: OldTP={tp_weighted:.5f}, NewTP={tp_final:.5f}, R/R={min_rr_ratio:.2f}")
