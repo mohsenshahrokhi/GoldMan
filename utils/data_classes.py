@@ -20,7 +20,9 @@ class OrderSignal:
     lot_size: float
     timeframe: TimeFrame
     confidence: float
-    entry_points: List[float]  # نقاط ورود از تایم‌فریم‌های مختلف
+    entry_points: List[float] = None  # نقاط ورود از تایم‌فریم‌های مختلف
+    trends: List[str] = None  # روندهای 3 تایم‌فریم اول
+    timeframes: List[str] = None  # نام تایم‌فریم‌ها
 
 
 @dataclass

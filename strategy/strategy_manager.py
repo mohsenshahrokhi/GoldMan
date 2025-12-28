@@ -259,12 +259,8 @@ class StrategyManager:
             confidence=rr_ratio,
             entry_points=entry_points if self.current_strategy == StrategyType.SUPER_SCALP else None,
             trends=trends[:3] if self.current_strategy == StrategyType.SUPER_SCALP and len(trends) >= 3 else None,
-            timeframes=[tf.value for tf in timeframes] if self.current_strategy == StrategyType.SUPER_SCALP else None,
-            entry_points=entry_points
+            timeframes=[tf.value for tf in timeframes] if self.current_strategy == StrategyType.SUPER_SCALP else None
         )
-        
-        signal.trends = trends[:3]
-        signal.trend_confidence = trend_confidence
         
         return signal
     
