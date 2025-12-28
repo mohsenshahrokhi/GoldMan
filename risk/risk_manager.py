@@ -249,7 +249,8 @@ class RiskManager:
         sl_node, tp_node = self.calculate_sl_tp_node_based(
             entry_price, direction, symbol, df, market_engine,
             safety_margin_points=node_safety_margin,
-            spread_factor=node_spread_factor
+            spread_factor=node_spread_factor,
+            strategy=strategy
         )
         sl_atr, tp_atr = self.calculate_sl_tp_atr_based(
             entry_price, direction, df,
