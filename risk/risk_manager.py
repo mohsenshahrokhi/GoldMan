@@ -279,6 +279,16 @@ class RiskManager:
             node_safety_margin = parameters.get('node_safety_margin', 5.0)
             node_spread_factor = parameters.get('node_spread_factor', 1.0)
         
+        if strategy == "SUPER_SCALP":
+            max_sl_distance = entry_price * 0.004
+            max_tp_distance = entry_price * 0.008
+        elif strategy == "SCALP":
+            max_sl_distance = entry_price * 0.02
+            max_tp_distance = entry_price * 0.04
+        else:
+            max_sl_distance = entry_price * 0.05
+            max_tp_distance = entry_price * 0.10
+        
         sl_node, tp_node = self.calculate_sl_tp_node_based(
             entry_price, direction, symbol, df, market_engine,
             safety_margin_points=node_safety_margin,
@@ -302,16 +312,6 @@ class RiskManager:
         
         valid_sl_values = []
         valid_tp_values = []
-        
-        if strategy == "SUPER_SCALP":
-            max_sl_distance = entry_price * 0.004
-            max_tp_distance = entry_price * 0.008
-        elif strategy == "SCALP":
-            max_sl_distance = entry_price * 0.02
-            max_tp_distance = entry_price * 0.04
-        else:
-            max_sl_distance = entry_price * 0.05
-            max_tp_distance = entry_price * 0.10
         
         if sl_node != 0.0:
             if (direction == "BUY" and sl_node < entry_price) or (direction == "SELL" and sl_node > entry_price):
