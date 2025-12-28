@@ -243,7 +243,7 @@ class RLEngine:
         cursor.execute("""
             SELECT state, action, reward, order_id
             FROM rl_experiences
-            WHERE symbol = ? AND strategy = ?
+            WHERE symbol = ? AND strategy = ? AND closed_by_sl_tp = 1
             ORDER BY timestamp DESC
             LIMIT 100
         """, (symbol, strategy))
@@ -399,7 +399,7 @@ class RLEngine:
         cursor.execute("""
             SELECT state, action, reward, order_id, timestamp
             FROM rl_experiences
-            WHERE symbol = ? AND strategy = ?
+            WHERE symbol = ? AND strategy = ? AND closed_by_sl_tp = 1
             ORDER BY timestamp DESC
             LIMIT 500
         """, (symbol, strategy))
@@ -517,7 +517,7 @@ class RLEngine:
         cursor.execute("""
             SELECT state, action, reward, order_id, timestamp
             FROM rl_experiences
-            WHERE symbol = ? AND strategy = ?
+            WHERE symbol = ? AND strategy = ? AND closed_by_sl_tp = 1
             ORDER BY timestamp DESC
             LIMIT 500
         """, (symbol, strategy))
@@ -645,7 +645,8 @@ class RLEngine:
     
     def save_experience(self, symbol: str, strategy: str, timeframe: str,
                        state: Dict, action: Dict, reward: float, 
-                       next_state: Dict = None, order_id: int = None):
+                       next_state: Dict = None, order_id: int = None,
+                       closed_by_sl_tp: int = 0):
         experience = {
             'symbol': symbol,
             'strategy': strategy,
@@ -654,6 +655,10 @@ class RLEngine:
             'action': action,
             'reward': reward,
             'next_state': next_state or {},
-            'order_id': order_id
+            'order_id': order_id,
+            'closed_by_sl_tp': closed_by_sl_tp
         }
         self.db.save_experience(experience)
+    
+    def update_experience_closed_by_sl_tp(self, order_id: int, closed_by_sl_tp: int = 1):
+        self.db.update_experience_closed_by_sl_tp(order_id, closed_by_sl_tp)

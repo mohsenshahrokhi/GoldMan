@@ -58,9 +58,15 @@ class DatabaseManager:
                     reward REAL,
                     next_state TEXT,
                     timestamp DATETIME,
-                    trade_id INTEGER
+                    trade_id INTEGER,
+                    closed_by_sl_tp INTEGER DEFAULT 0
                 )
             """)
+            
+            try:
+                cursor.execute("ALTER TABLE rl_experiences ADD COLUMN closed_by_sl_tp INTEGER DEFAULT 0")
+            except sqlite3.OperationalError:
+                pass
             
             cursor.execute("""
                 CREATE TABLE IF NOT EXISTS rl_weights (
@@ -346,8 +352,8 @@ class DatabaseManager:
             with self.get_cursor() as cursor:
                 cursor.execute("""
                     INSERT INTO rl_experiences 
-                    (symbol, strategy, timeframe, state, action, reward, next_state, timestamp, trade_id)
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    (symbol, strategy, timeframe, state, action, reward, next_state, timestamp, trade_id, closed_by_sl_tp)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """, (
                     experience['symbol'],
                     experience['strategy'],
@@ -357,7 +363,8 @@ class DatabaseManager:
                     experience['reward'],
                     json.dumps(experience.get('next_state', {})),
                     datetime.now(),
-                    experience.get('trade_id')
+                    experience.get('trade_id'),
+                    experience.get('closed_by_sl_tp', 0)
                 ))
                 self.conn.commit()
                 return True

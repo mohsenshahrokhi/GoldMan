@@ -28,6 +28,7 @@ class OrderExecutor:
         self.frozen_positions = []
         self.data_provider = None
         self.main_controller = None
+        self.original_sl_tp = {}  # Store original SL/TP for each ticket
     
     async def _send_telegram_notification(self, message: str):
         """ارسال اعلان به تلگرام"""
@@ -200,6 +201,7 @@ class OrderExecutor:
             }):
                 logger.warning(f"Failed to save trade {ticket} to database, but trade is open")
             
+            self.original_sl_tp[ticket] = {'sl': sl, 'tp': tp}
             self.current_position = ticket
             return ticket
             
@@ -264,6 +266,28 @@ class OrderExecutor:
             tp_current = position.tp
             volume = position.volume
             symbol = position.symbol
+            
+            if ticket in self.original_sl_tp:
+                original_sl = self.original_sl_tp[ticket]['sl']
+                original_tp = self.original_sl_tp[ticket]['tp']
+                
+                sl_changed = abs(sl_current - original_sl) > 0.00001 if original_sl > 0 else sl_current != original_sl
+                tp_changed = abs(tp_current - original_tp) > 0.00001 if original_tp > 0 else tp_current != original_tp
+                
+                if sl_changed or tp_changed:
+                    logger.warning(f"[SENSITIVE] SL/TP changed by user detected: Ticket={ticket}, OriginalSL={original_sl:.5f}, CurrentSL={sl_current:.5f}, OriginalTP={original_tp:.5f}, CurrentTP={tp_current:.5f}. Restoring original values.")
+                    request = {
+                        "action": mt5.TRADE_ACTION_SLTP,
+                        "symbol": symbol,
+                        "position": ticket,
+                        "sl": original_sl,
+                        "tp": original_tp,
+                    }
+                    result = mt5.order_send(request)
+                    if result.retcode == mt5.TRADE_RETCODE_DONE:
+                        logger.info(f"[SENSITIVE] SL/TP restored successfully: Ticket={ticket}, SL={original_sl:.5f}, TP={original_tp:.5f}")
+                    else:
+                        logger.error(f"[SENSITIVE] Failed to restore SL/TP: Ticket={ticket}, Retcode={result.retcode}, Comment={result.comment}")
             
             if position.type == mt5.ORDER_TYPE_BUY:
                 profit_pct = ((current_price - entry_price) / entry_price) * 100
@@ -409,12 +433,21 @@ class OrderExecutor:
             
             position = position[0]
             
+            if ticket in self.original_sl_tp:
+                original_tp = self.original_sl_tp[ticket]['tp']
+            else:
+                original_tp = position.tp
+                self.original_sl_tp[ticket] = {'sl': position.sl, 'tp': position.tp}
+            
+            if abs(position.tp - original_tp) > 0.00001 if original_tp > 0 else position.tp != original_tp:
+                logger.warning(f"[SENSITIVE] TP changed by user detected: Ticket={ticket}, OriginalTP={original_tp:.5f}, CurrentTP={position.tp:.5f}. Restoring original TP.")
+            
             request = {
                 "action": mt5.TRADE_ACTION_SLTP,
                 "symbol": position.symbol,
                 "position": ticket,
                 "sl": new_sl,
-                "tp": position.tp,
+                "tp": original_tp,
             }
             
             old_sl = position.sl

@@ -345,7 +345,20 @@ class GoldManTradingBot:
                             if deals:
                                 total_profit = sum(d.profit for d in deals)
                                 account_info = self.conn_mgr.get_account_info()
-                                logger.info(f"[SENSITIVE] Trade closed: Ticket={ticket}, TotalProfit={total_profit:.2f}, Balance={account_info.balance:.2f}, Equity={account_info.equity:.2f}")
+                                
+                                close_deal = deals[-1]
+                                close_reason = close_deal.reason
+                                
+                                is_sl_tp_close = (close_reason == mt5.DEAL_REASON_SL or 
+                                                  close_reason == mt5.DEAL_REASON_TP or 
+                                                  close_reason == mt5.DEAL_REASON_SO)
+                                
+                                close_reason_str = "SL" if close_reason == mt5.DEAL_REASON_SL else \
+                                                  "TP" if close_reason == mt5.DEAL_REASON_TP else \
+                                                  "SO" if close_reason == mt5.DEAL_REASON_SO else \
+                                                  "MANUAL"
+                                
+                                logger.info(f"[SENSITIVE] Trade closed: Ticket={ticket}, TotalProfit={total_profit:.2f}, CloseReason={close_reason_str}, Balance={account_info.balance:.2f}, Equity={account_info.equity:.2f}")
                                 cursor.execute("SELECT * FROM trades WHERE ticket = ?", (ticket,))
                                 order_data = cursor.fetchone()
                                 
@@ -356,7 +369,13 @@ class GoldManTradingBot:
                                 }):
                                     logger.warning(f"Failed to update trade {ticket} in database after monitoring detected closure")
                                 
-                                if self.current_strategy == StrategyType.SUPER_SCALP and order_data:
+                                if not is_sl_tp_close:
+                                    logger.info(f"[RL] Trade {ticket} closed manually by user (reason: {close_reason_str}). Skipping RL learning.")
+                                
+                                if is_sl_tp_close:
+                                    self.rl_engine.update_experience_closed_by_sl_tp(ticket, 1)
+                                
+                                if self.current_strategy == StrategyType.SUPER_SCALP and order_data and is_sl_tp_close:
                                     import json
                                     cursor.execute("""
                                         SELECT state, timeframe FROM rl_experiences 
