@@ -23,6 +23,13 @@ class RLEngine:
         self.optimization_count = {}
         
         self.default_weights = {
+            'node': 0.25,
+            'atr': 0.25,
+            'garch': 0.25,
+            'fixed_rr': 0.25
+        }
+        
+        self.default_weights_super_scalp = {
             'node': 0.95,
             'atr': 0.0167,
             'garch': 0.0167,
@@ -121,7 +128,10 @@ class RLEngine:
     def get_weights(self, symbol: str, strategy: str) -> Dict[str, float]:
         weights = self.db.get_rl_weights(symbol, strategy)
         if not weights:
-            weights = self.default_weights.copy()
+            if strategy == "SUPER_SCALP":
+                weights = self.default_weights_super_scalp.copy()
+            else:
+                weights = self.default_weights.copy()
             self.save_weights(symbol, strategy, weights)
         return weights
     
