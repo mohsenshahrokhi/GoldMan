@@ -105,8 +105,8 @@ class StrategyManager:
             current_time = time.time()
             timeframe_key = f"{tf.value}_{self.current_symbol}"
             
+            should_analyze = True
             if self.current_strategy == StrategyType.SUPER_SCALP:
-                should_analyze = True
                 if timeframe_key in self._last_analysis_time:
                     time_since_last = current_time - self._last_analysis_time[timeframe_key]
                     if time_since_last < 10:
@@ -115,9 +115,12 @@ class StrategyManager:
                 if should_analyze:
                     self._last_analysis_time[timeframe_key] = current_time
             
+            if not should_analyze:
+                continue
+            
             trend = self.market_engine.detect_trend(df)
             
-            if self.current_strategy == StrategyType.SUPER_SCALP and should_analyze:
+            if self.current_strategy == StrategyType.SUPER_SCALP:
                 should_log_trend = True
                 log_key = f"{timeframe_key}_trend"
                 if log_key in self._last_trend_log_time:
