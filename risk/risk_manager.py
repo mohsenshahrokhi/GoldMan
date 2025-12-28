@@ -346,17 +346,17 @@ class RiskManager:
         
         if strategy == "SUPER_SCALP":
             if direction == "BUY":
-                sl_final = max(sl_final, entry_price - max_sl_distance)
+                sl_final = min(sl_final, entry_price - max_sl_distance)
                 tp_final = min(tp_final, entry_price + max_tp_distance)
             else:
-                sl_final = min(sl_final, entry_price + max_sl_distance)
+                sl_final = max(sl_final, entry_price + max_sl_distance)
                 tp_final = max(tp_final, entry_price - max_tp_distance)
         elif strategy == "SCALP":
             if direction == "BUY":
-                sl_final = max(sl_final, entry_price - max_sl_distance)
+                sl_final = min(sl_final, entry_price - max_sl_distance)
                 tp_final = min(tp_final, entry_price + max_tp_distance)
             else:
-                sl_final = min(sl_final, entry_price + max_sl_distance)
+                sl_final = max(sl_final, entry_price + max_sl_distance)
                 tp_final = max(tp_final, entry_price - max_tp_distance)
         
         if direction == "BUY" and (sl_final >= entry_price or tp_final <= entry_price):
