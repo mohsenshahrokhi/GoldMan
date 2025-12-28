@@ -370,6 +370,11 @@ class GoldManTradingBot:
         
         try:
             if self.telegram_bot:
+                for chat_id in self.telegram_bot.chat_ids:
+                    try:
+                        await self.telegram_bot.send_status_message(chat_id, is_start=False)
+                    except Exception as e:
+                        logger.error(f"Error sending stop status message: {e}")
                 await self.telegram_bot.stop()
         except Exception as e:
             logger.error(f"Error stopping Telegram bot: {e}")
