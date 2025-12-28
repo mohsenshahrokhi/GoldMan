@@ -144,7 +144,13 @@ class StrategyManager:
                             timeframe_key = f"{tf.value}_{self.current_symbol}"
                             current_time = time.time()
                             if timeframe_key not in self._last_sideways_log_time or current_time - self._last_sideways_log_time[timeframe_key] >= 30:
-                                logger.info(f"[TREND] {tf.value}: {trend} - Analysis stopped (SIDEWAYS detected before SL/TP timeframe)")
+                                from ml.rl_engine import RLEngine
+                                rl_engine_temp = RLEngine(self.risk_manager.db)
+                                learned_strength = rl_engine_temp.get_trend_strength(self.current_symbol, self.current_strategy.value, tf.value)
+                                if learned_strength > 0:
+                                    logger.info(f"[TREND] {tf.value}: {trend} ({learned_strength:.1f}%) - Analysis stopped (SIDEWAYS detected before SL/TP timeframe)")
+                                else:
+                                    logger.info(f"[TREND] {tf.value}: {trend} ({trend_strength:.1f}%) - Analysis stopped (SIDEWAYS detected before SL/TP timeframe)")
                                 self._last_sideways_log_time[timeframe_key] = current_time
                             return None
                     else:
