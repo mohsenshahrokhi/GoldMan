@@ -27,6 +27,8 @@ class StrategyManager:
         self._last_sideways_log_time = {}
         self._last_trend_log_time = {}
         self._last_analysis_time = {}
+        self._last_trend_log_time = {}
+        self._last_analysis_time = {}
         
         self.strategy_timeframes = {
             StrategyType.DAY_TRADING: [
@@ -100,7 +102,32 @@ class StrategyManager:
                     return None
                 continue
             
+            current_time = time.time()
+            timeframe_key = f"{tf.value}_{self.current_symbol}"
+            
+            if self.current_strategy == StrategyType.SUPER_SCALP:
+                should_analyze = True
+                if timeframe_key in self._last_analysis_time:
+                    time_since_last = current_time - self._last_analysis_time[timeframe_key]
+                    if time_since_last < 10:
+                        should_analyze = False
+                
+                if should_analyze:
+                    self._last_analysis_time[timeframe_key] = current_time
+            
             trend = self.market_engine.detect_trend(df)
+            
+            if self.current_strategy == StrategyType.SUPER_SCALP and should_analyze:
+                should_log_trend = True
+                log_key = f"{timeframe_key}_trend"
+                if log_key in self._last_trend_log_time:
+                    time_since_last_log = current_time - self._last_trend_log_time[log_key]
+                    if time_since_last_log < 300:
+                        should_log_trend = False
+                
+                if should_log_trend:
+                    logger.info(f"[ANALYSIS] {tf.value}: {trend} (before entry point calculation)")
+                    self._last_trend_log_time[log_key] = current_time
             
             if trend == "SIDEWAYS":
                 if idx < sl_tp_timeframe_index:
