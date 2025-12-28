@@ -1,4 +1,5 @@
 from typing import Optional, Tuple
+import time
 
 try:
     import numpy as np
@@ -23,6 +24,7 @@ class StrategyManager:
         self.risk_manager = risk_manager
         self.current_strategy = None
         self.current_symbol = None
+        self._last_sideways_log_time = {}
         
         self.strategy_timeframes = {
             StrategyType.DAY_TRADING: [
@@ -102,12 +104,21 @@ class StrategyManager:
             
             trend = self.market_engine.detect_trend(df)
             
-            if self.current_strategy == StrategyType.SUPER_SCALP and idx < 3:
-                logger.info(f"[TREND] {tf.value}: {trend}")
-            
             if trend == "SIDEWAYS":
                 if idx < sl_tp_timeframe_index:
-                    return None
+                    if self.current_strategy == StrategyType.SUPER_SCALP:
+                        if idx == 0:
+                            timeframe_key = f"{tf.value}_{self.current_symbol}"
+                            current_time = time.time()
+                            if timeframe_key not in self._last_sideways_log_time or current_time - self._last_sideways_log_time[timeframe_key] >= 30:
+                                logger.info(f"[TREND] {tf.value}: {trend} - Analysis stopped (SIDEWAYS detected before SL/TP timeframe)")
+                                self._last_sideways_log_time[timeframe_key] = current_time
+                            return None
+                    else:
+                        return None
+            
+            if self.current_strategy == StrategyType.SUPER_SCALP and idx < 3:
+                logger.info(f"[TREND] {tf.value}: {trend}")
             
             trends.append(trend)
             
@@ -115,6 +126,8 @@ class StrategyManager:
             
             if entry_point is None:
                 if idx < sl_tp_timeframe_index:
+                    if self.current_strategy == StrategyType.SUPER_SCALP:
+                        logger.debug(f"[ENTRY] No entry point found at {tf.value} - Analysis stopped")
                     return None
             else:
                 entry_points.append(entry_point)
@@ -194,7 +207,7 @@ class StrategyManager:
         
         sl, tp = self.risk_manager.calculate_final_sl_tp(
             final_entry, direction, self.current_symbol, df_sl_tp, 
-            self.market_engine, weights, parameters
+            self.market_engine, weights, parameters, self.current_strategy.value
         )
         
         if sl == 0.0 or tp == 0.0:
