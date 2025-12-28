@@ -105,18 +105,21 @@ class StrategyManager:
             
             current_time = time.time()
             timeframe_key = f"{tf.value}_{self.current_symbol}"
+            timeframe_key_with_idx = f"{tf.value}_{idx}_{self.current_symbol}"
             
             should_analyze = True
             if self.current_strategy == StrategyType.SUPER_SCALP:
-                if timeframe_key in self._last_analysis_time:
-                    time_since_last = current_time - self._last_analysis_time[timeframe_key]
+                if timeframe_key_with_idx in self._last_analysis_time:
+                    time_since_last = current_time - self._last_analysis_time[timeframe_key_with_idx]
                     if time_since_last < 1:
                         should_analyze = False
                 
                 if should_analyze:
-                    self._last_analysis_time[timeframe_key] = current_time
+                    self._last_analysis_time[timeframe_key_with_idx] = current_time
             
             if not should_analyze:
+                if self.current_strategy == StrategyType.SUPER_SCALP:
+                    logger.debug(f"[ENTRY] Skipping analysis for {tf.value} due to debounce (idx={idx})")
                 continue
             
             if self.current_strategy == StrategyType.SUPER_SCALP:
@@ -175,7 +178,7 @@ class StrategyManager:
                     rl_engine_temp = RLEngine(self.risk_manager.db)
                     trend_weights_temp = rl_engine_temp.get_trend_weights(self.current_symbol, self.current_strategy.value)
                     trend_key = f'trend_{idx}'
-                    trend_weight = trend_weights_temp.get(trend_key, 0.33)
+                    trend_weight = trend_weights_temp.get(trend_key, 0.5 if idx == 0 else 0.25)
                     logger.info(f"[TREND] {tf.value}: {trend} (weight: {trend_weight:.2f})")
             else:
                 trend_strengths.append(0.0)
@@ -184,13 +187,21 @@ class StrategyManager:
             
             entry_point = self.market_engine.find_entry_point(df, trend, tf)
             
+            if self.current_strategy == StrategyType.SUPER_SCALP:
+                logger.info(f"[ENTRY_POINT] {tf.value}: trend={trend}, entry_point={entry_point}, idx={idx}, sl_tp_idx={sl_tp_timeframe_index}")
+            
             if entry_point is None:
                 if idx < sl_tp_timeframe_index:
                     if self.current_strategy == StrategyType.SUPER_SCALP:
-                        logger.debug(f"[ENTRY] No entry point found at {tf.value} - Analysis stopped")
+                        logger.info(f"[ENTRY] No entry point found at {tf.value} (idx={idx}) - Analysis stopped")
                     return None
+                else:
+                    if self.current_strategy == StrategyType.SUPER_SCALP:
+                        logger.info(f"[ENTRY] No entry point found at {tf.value} (idx={idx}) - Skipping this timeframe")
             else:
                 entry_points.append(entry_point)
+                if self.current_strategy == StrategyType.SUPER_SCALP:
+                    logger.info(f"[ENTRY_POINT] Added: {tf.value} -> {entry_point:.5f} (total: {len(entry_points)}/4)")
             
             
             if self.current_strategy != StrategyType.SUPER_SCALP or idx < len(timeframes) - 1:
@@ -202,12 +213,16 @@ class StrategyManager:
                 }
         
         if len(entry_points) < 4:
-            if self.current_strategy != StrategyType.SUPER_SCALP:
+            if self.current_strategy == StrategyType.SUPER_SCALP:
+                logger.info(f"[ENTRY] Rejected - Not enough entry points found ({len(entry_points)}/4)")
+            else:
                 logger.info(f"[MARKET_ANALYSIS] Not enough entry points found ({len(entry_points)}/4). Skipping trade.")
             return None
         
         if len(trends) < 3:
-            if self.current_strategy != StrategyType.SUPER_SCALP:
+            if self.current_strategy == StrategyType.SUPER_SCALP:
+                logger.info(f"[ENTRY] Rejected - Not enough trends found ({len(trends)}/3)")
+            else:
                 logger.info(f"[MARKET_ANALYSIS] Not enough trends found ({len(trends)}/3). Skipping trade.")
             return None
         
@@ -312,12 +327,17 @@ class StrategyManager:
         
         for i in range(min(3, len(trends))):
             trend_key = f'trend_{i}'
-            weight = trend_weights.get(trend_key, 0.33)
+            weight = trend_weights.get(trend_key, 0.5 if i == 0 else 0.25)
             trend = trends[i]
             if trend in trend_scores:
                 trend_scores[trend] += weight
+            if self.current_strategy == StrategyType.SUPER_SCALP:
+                logger.info(f"[TREND_SCORE] {timeframes[i].value}: {trend} (weight: {weight:.2f}) -> {trend_scores[trend]:.2f}")
         
         dominant_trend = max(trend_scores, key=trend_scores.get)
+        
+        if self.current_strategy == StrategyType.SUPER_SCALP:
+            logger.info(f"[TREND_SCORE] Final scores: {trend_scores}, Dominant: {dominant_trend}")
         
         if dominant_trend == "SIDEWAYS":
             if self.current_strategy == StrategyType.SUPER_SCALP:
