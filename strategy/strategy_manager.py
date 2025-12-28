@@ -25,6 +25,8 @@ class StrategyManager:
         self.current_strategy = None
         self.current_symbol = None
         self._last_sideways_log_time = {}
+        self._last_trend_log_time = {}
+        self._last_analysis_time = {}
         
         self.strategy_timeframes = {
             StrategyType.DAY_TRADING: [
