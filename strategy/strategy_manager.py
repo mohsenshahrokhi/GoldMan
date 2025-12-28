@@ -109,7 +109,7 @@ class StrategyManager:
             if self.current_strategy == StrategyType.SUPER_SCALP:
                 if timeframe_key in self._last_analysis_time:
                     time_since_last = current_time - self._last_analysis_time[timeframe_key]
-                    if time_since_last < 10:
+                    if time_since_last < 1:
                         should_analyze = False
                 
                 if should_analyze:
