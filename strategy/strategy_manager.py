@@ -221,16 +221,11 @@ class StrategyManager:
         entry_weights = rl_engine.get_entry_weights(self.current_symbol, self.current_strategy.value)
         trend_weights = rl_engine.get_trend_weights(self.current_symbol, self.current_strategy.value)
         
-        base_weights = [
-            entry_weights.get('entry_0', 0.25),
-            entry_weights.get('entry_1', 0.25),
-            entry_weights.get('entry_2', 0.25),
-            entry_weights.get('entry_3', 0.25)
-        ]
-        
-        adjusted_weights = []
+        timeframe_weights = []
         for i in range(4):
-            base_weight = base_weights[i]
+            trend_key = f'trend_{i}' if i < 3 else 'trend_2'
+            trend_weight = trend_weights.get(trend_key, 0.33)
+            
             if self.current_strategy == StrategyType.SUPER_SCALP and i < len(trend_strengths):
                 trend_strength = trend_strengths[i]
                 learned_strength = rl_engine.get_trend_strength(self.current_symbol, self.current_strategy.value, timeframes[i].value)
@@ -239,33 +234,53 @@ class StrategyManager:
                 else:
                     strength_factor = trend_strength / 100.0 if trend_strength > 0 else 0.5
                 
-                adjusted_weight = base_weight * strength_factor
+                final_weight = trend_weight * strength_factor
             else:
-                adjusted_weight = base_weight
+                final_weight = trend_weight
             
-            adjusted_weights.append(adjusted_weight)
+            timeframe_weights.append(final_weight)
         
-        total_weight = sum(adjusted_weights)
-        if total_weight > 0:
-            adjusted_weights = [w / total_weight for w in adjusted_weights]
-        else:
-            adjusted_weights = base_weights
+        max_weight = max(timeframe_weights) if timeframe_weights else 0.0
+        weight_threshold = 0.2
         
-        if np is None:
-            final_entry = (
-                adjusted_weights[0] * entry_points[0] +
-                adjusted_weights[1] * entry_points[1] +
-                adjusted_weights[2] * entry_points[2] +
-                adjusted_weights[3] * entry_points[3]
-            )
+        selected_entries = []
+        selected_weights = []
+        
+        if max_weight > 0.5:
+            max_index = timeframe_weights.index(max_weight)
+            selected_entries = [entry_points[max_index]]
+            if self.current_strategy == StrategyType.SUPER_SCALP:
+                logger.info(f"[ENTRY] Single timeframe selected (weight: {max_weight:.2f}): {timeframes[max_index].value} @ {entry_points[max_index]:.5f}")
         else:
-            weighted_entries = np.array([
-                adjusted_weights[0] * entry_points[0],
-                adjusted_weights[1] * entry_points[1],
-                adjusted_weights[2] * entry_points[2],
-                adjusted_weights[3] * entry_points[3]
-            ])
-            final_entry = np.sum(weighted_entries)
+            for i in range(4):
+                if timeframe_weights[i] >= weight_threshold:
+                    selected_entries.append(entry_points[i])
+                    selected_weights.append(timeframe_weights[i])
+                    if self.current_strategy == StrategyType.SUPER_SCALP:
+                        logger.info(f"[ENTRY] Timeframe {timeframes[i].value} selected (weight: {timeframe_weights[i]:.2f})")
+        
+        if not selected_entries:
+            if self.current_strategy == StrategyType.SUPER_SCALP:
+                logger.debug("[ENTRY] No timeframes with sufficient weight found, using all entry points")
+            selected_entries = entry_points
+            selected_weights = timeframe_weights
+        
+        if len(selected_entries) == 1:
+            final_entry = selected_entries[0]
+        else:
+            if selected_weights and sum(selected_weights) > 0:
+                total_weight = sum(selected_weights)
+                normalized_weights = [w / total_weight for w in selected_weights]
+                if np is None:
+                    final_entry = sum(normalized_weights[i] * selected_entries[i] for i in range(len(selected_entries)))
+                else:
+                    weighted_entries = np.array([normalized_weights[i] * selected_entries[i] for i in range(len(selected_entries))])
+                    final_entry = np.sum(weighted_entries)
+            else:
+                if np is None:
+                    final_entry = sum(selected_entries) / len(selected_entries)
+                else:
+                    final_entry = np.mean(np.array(selected_entries))
         
         trend_scores = {
             'UP': 0.0,
