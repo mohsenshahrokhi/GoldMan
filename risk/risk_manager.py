@@ -201,7 +201,8 @@ class RiskManager:
     def calculate_final_sl_tp(self, entry_price: float, direction: str, symbol: str,
                              df: pd.DataFrame, market_engine: 'MarketEngine',
                              weights: Dict[str, float] = None,
-                             parameters: Dict[str, float] = None) -> Tuple[float, float]:
+                             parameters: Dict[str, float] = None,
+                             strategy: str = None) -> Tuple[float, float]:
         if weights is None or not weights:
             weights = {
                 'node': 0.25,
@@ -217,14 +218,33 @@ class RiskManager:
         if parameters is None:
             parameters = {}
         
-        atr_multiplier_sl = parameters.get('atr_multiplier_sl', 2.0)
-        atr_multiplier_tp = parameters.get('atr_multiplier_tp', 2.0)
-        garch_alpha_0 = parameters.get('garch_alpha_0', 0.0001)
-        garch_alpha_1 = parameters.get('garch_alpha_1', 0.1)
-        garch_beta_1 = parameters.get('garch_beta_1', 0.8)
-        garch_k = parameters.get('garch_k', 2.0)
-        node_safety_margin = parameters.get('node_safety_margin', 5.0)
-        node_spread_factor = parameters.get('node_spread_factor', 1.0)
+        if strategy == "SUPER_SCALP":
+            atr_multiplier_sl = parameters.get('atr_multiplier_sl', 0.5)
+            atr_multiplier_tp = parameters.get('atr_multiplier_tp', 1.0)
+            garch_alpha_0 = parameters.get('garch_alpha_0', 0.0001)
+            garch_alpha_1 = parameters.get('garch_alpha_1', 0.1)
+            garch_beta_1 = parameters.get('garch_beta_1', 0.8)
+            garch_k = parameters.get('garch_k', 1.0)
+            node_safety_margin = parameters.get('node_safety_margin', 2.0)
+            node_spread_factor = parameters.get('node_spread_factor', 1.0)
+        elif strategy == "SCALP":
+            atr_multiplier_sl = parameters.get('atr_multiplier_sl', 1.0)
+            atr_multiplier_tp = parameters.get('atr_multiplier_tp', 2.0)
+            garch_alpha_0 = parameters.get('garch_alpha_0', 0.0001)
+            garch_alpha_1 = parameters.get('garch_alpha_1', 0.1)
+            garch_beta_1 = parameters.get('garch_beta_1', 0.8)
+            garch_k = parameters.get('garch_k', 1.5)
+            node_safety_margin = parameters.get('node_safety_margin', 3.0)
+            node_spread_factor = parameters.get('node_spread_factor', 1.0)
+        else:
+            atr_multiplier_sl = parameters.get('atr_multiplier_sl', 2.0)
+            atr_multiplier_tp = parameters.get('atr_multiplier_tp', 2.0)
+            garch_alpha_0 = parameters.get('garch_alpha_0', 0.0001)
+            garch_alpha_1 = parameters.get('garch_alpha_1', 0.1)
+            garch_beta_1 = parameters.get('garch_beta_1', 0.8)
+            garch_k = parameters.get('garch_k', 2.0)
+            node_safety_margin = parameters.get('node_safety_margin', 5.0)
+            node_spread_factor = parameters.get('node_spread_factor', 1.0)
         
         sl_node, tp_node = self.calculate_sl_tp_node_based(
             entry_price, direction, symbol, df, market_engine,
@@ -247,8 +267,15 @@ class RiskManager:
         valid_sl_values = []
         valid_tp_values = []
         
-        max_sl_distance = entry_price * 0.05
-        max_tp_distance = entry_price * 0.10
+        if strategy == "SUPER_SCALP":
+            max_sl_distance = entry_price * 0.01
+            max_tp_distance = entry_price * 0.02
+        elif strategy == "SCALP":
+            max_sl_distance = entry_price * 0.02
+            max_tp_distance = entry_price * 0.04
+        else:
+            max_sl_distance = entry_price * 0.05
+            max_tp_distance = entry_price * 0.10
         
         if sl_node != 0.0:
             if (direction == "BUY" and sl_node < entry_price) or (direction == "SELL" and sl_node > entry_price):
@@ -294,6 +321,21 @@ class RiskManager:
         sl_final = sum(sl * w for _, sl, w in valid_sl_values) / total_sl_weight if total_sl_weight > 0 else entry_price * 0.99
         tp_weighted = sum(tp * w for _, tp, w in valid_tp_values) / total_tp_weight if total_tp_weight > 0 else entry_price * 1.01
         
+        if strategy == "SUPER_SCALP":
+            if direction == "BUY":
+                sl_final = max(sl_final, entry_price - max_sl_distance)
+                tp_weighted = min(tp_weighted, entry_price + max_tp_distance)
+            else:
+                sl_final = min(sl_final, entry_price + max_sl_distance)
+                tp_weighted = max(tp_weighted, entry_price - max_tp_distance)
+        elif strategy == "SCALP":
+            if direction == "BUY":
+                sl_final = max(sl_final, entry_price - max_sl_distance)
+                tp_weighted = min(tp_weighted, entry_price + max_tp_distance)
+            else:
+                sl_final = min(sl_final, entry_price + max_sl_distance)
+                tp_weighted = max(tp_weighted, entry_price - max_tp_distance)
+        
         min_rr_ratio = parameters.get('min_rr_ratio', MIN_RR_RATIO)
         tp_fixed = self.calculate_sl_tp_fixed_rr(entry_price, sl_final, min_rr_ratio)
         
@@ -315,6 +357,21 @@ class RiskManager:
                     if abs(tp_fixed_forced - entry_price) < entry_price * 0.15:
                         tp_final = tp_fixed_forced
                         logger.debug(f"[SL_TP] Forced TP adjustment to meet min R/R: OldTP={tp_weighted:.5f}, NewTP={tp_final:.5f}, R/R={min_rr_ratio:.2f}")
+        
+        if strategy == "SUPER_SCALP":
+            if direction == "BUY":
+                sl_final = max(sl_final, entry_price - max_sl_distance)
+                tp_final = min(tp_final, entry_price + max_tp_distance)
+            else:
+                sl_final = min(sl_final, entry_price + max_sl_distance)
+                tp_final = max(tp_final, entry_price - max_tp_distance)
+        elif strategy == "SCALP":
+            if direction == "BUY":
+                sl_final = max(sl_final, entry_price - max_sl_distance)
+                tp_final = min(tp_final, entry_price + max_tp_distance)
+            else:
+                sl_final = min(sl_final, entry_price + max_sl_distance)
+                tp_final = max(tp_final, entry_price - max_tp_distance)
         
         if direction == "BUY" and (sl_final >= entry_price or tp_final <= entry_price):
             return 0.0, 0.0
