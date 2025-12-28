@@ -305,7 +305,20 @@ class OrderExecutor:
         safety_margin = 5 * symbol_info.point
         adjustment = spread + safety_margin + commission
         
-        df = self.data_provider.get_ohlc_data(symbol, TimeFrame.M15, 200)
+        if strategy:
+            from config.enums import StrategyType
+            if strategy == StrategyType.DAY_TRADING:
+                node_timeframe = TimeFrame.M15
+            elif strategy == StrategyType.SCALP:
+                node_timeframe = TimeFrame.M5
+            elif strategy == StrategyType.SUPER_SCALP:
+                node_timeframe = TimeFrame.M1
+            else:
+                node_timeframe = TimeFrame.M15
+        else:
+            node_timeframe = TimeFrame.M15
+        
+        df = self.data_provider.get_ohlc_data(symbol, node_timeframe, 200)
         if df is None:
             return
         
