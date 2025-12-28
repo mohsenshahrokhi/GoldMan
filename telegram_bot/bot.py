@@ -72,6 +72,8 @@ class TelegramBot:
         self.application.add_handler(CommandHandler("report", self.report_command))
         self.application.add_handler(CommandHandler("params", self.params_command))
         self.application.add_handler(CommandHandler("stop", self.stop_command))
+        self.application.add_handler(CommandHandler("add_channel", self.add_channel_command))
+        self.application.add_handler(CommandHandler("get_chat_id", self.get_chat_id_command))
         self.application.add_handler(CallbackQueryHandler(self.button_callback))
         
         await self.application.initialize()
