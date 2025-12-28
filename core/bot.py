@@ -234,6 +234,18 @@ class GoldManTradingBot:
                         logger.info(f"[MAIN_LOOP] Trade opened successfully: Ticket {ticket}")
                         self.last_activity_time = time.time()
                         
+                        if self.current_strategy == StrategyType.SUPER_SCALP and signal.entry_points and signal.trends and signal.timeframes:
+                            logger.info("=" * 60)
+                            logger.info("[SUPER_SCALP] Trade Analysis Details:")
+                            logger.info(f"  Final Entry Price: {signal.entry_price:.5f}")
+                            logger.info("  Entry Points by Timeframe:")
+                            for i, (tf, entry) in enumerate(zip(signal.timeframes, signal.entry_points)):
+                                logger.info(f"    {tf}: {entry:.5f}")
+                            logger.info("  Trends (First 3 Timeframes):")
+                            for i, (tf, trend) in enumerate(zip(signal.timeframes[:3], signal.trends)):
+                                logger.info(f"    {tf}: {trend}")
+                            logger.info("=" * 60)
+                        
                         if self.telegram_bot:
                             account_info = self.conn_mgr.get_account_info()
                             message = f"""✅ <b>Order Opened</b>

@@ -257,6 +257,9 @@ class StrategyManager:
             lot_size=lot_size,
             timeframe=sl_tp_timeframe,
             confidence=rr_ratio,
+            entry_points=entry_points if self.current_strategy == StrategyType.SUPER_SCALP else None,
+            trends=trends[:3] if self.current_strategy == StrategyType.SUPER_SCALP and len(trends) >= 3 else None,
+            timeframes=[tf.value for tf in timeframes] if self.current_strategy == StrategyType.SUPER_SCALP else None,
             entry_points=entry_points
         )
         
