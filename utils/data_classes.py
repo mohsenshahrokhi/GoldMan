@@ -23,6 +23,7 @@ class OrderSignal:
     entry_points: List[float] = None  # نقاط ورود از تایم‌فریم‌های مختلف
     trends: List[str] = None  # روندهای 3 تایم‌فریم اول
     timeframes: List[str] = None  # نام تایم‌فریم‌ها
+    trend_strengths: List[float] = None  # قدرت روندهای هر تایم‌فریم
 
 
 @dataclass
