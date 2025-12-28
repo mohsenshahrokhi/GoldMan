@@ -332,12 +332,32 @@ class GoldManTradingBot:
                                 total_profit = sum(d.profit for d in deals)
                                 account_info = self.conn_mgr.get_account_info()
                                 logger.info(f"[SENSITIVE] Trade closed: Ticket={ticket}, TotalProfit={total_profit:.2f}, Balance={account_info.balance:.2f}, Equity={account_info.equity:.2f}")
+                                cursor.execute("SELECT * FROM trades WHERE ticket = ?", (ticket,))
+                                order_data = cursor.fetchone()
+                                
                                 if not self.db_manager.update_order(ticket, {
                                     'status': 'CLOSED',
                                     'exit_time': datetime.now(),
                                     'profit': total_profit
                                 }):
                                     logger.warning(f"Failed to update trade {ticket} in database after monitoring detected closure")
+                                
+                                if self.telegram_bot and order_data:
+                                    profit_emoji = "✅" if total_profit > 0 else "❌"
+                                    message = f"""{profit_emoji} <b>Order Closed</b>
+
+📊 <b>Order Details:</b>
+• Ticket: {ticket}
+• Symbol: {order_data['symbol']}
+• Direction: {order_data['direction']}
+• Entry: {order_data['entry_price']:.5f}
+• Exit: {deals[-1].price if deals else 'N/A':.5f}
+• Profit/Loss: ${total_profit:.2f}
+
+💰 <b>Account:</b>
+• Balance: ${account_info.balance:.2f}
+• Equity: ${account_info.equity:.2f}"""
+                                    await self.telegram_bot.send_notification(message)
                 
                 await asyncio.sleep(60)
                 

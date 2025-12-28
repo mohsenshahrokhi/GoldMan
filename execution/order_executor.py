@@ -507,6 +507,42 @@ class OrderExecutor:
             if result.retcode == mt5.TRADE_RETCODE_DONE:
                 account_info = self.conn_mgr.get_account_info()
                 logger.info(f"[SENSITIVE] Partial exit successful: Ticket={ticket}, Symbol={position.symbol}, ClosedVolume={volume:.2f}, RemainingVolume={remaining_volume:.2f}, Balance={account_info.balance:.2f}, Equity={account_info.equity:.2f}")
+                
+                if self.main_controller and self.main_controller.telegram_bot:
+                    import asyncio
+                    try:
+                        loop = asyncio.get_event_loop()
+                        if loop.is_running():
+                            asyncio.create_task(self._send_telegram_notification(
+                                f"""📉 <b>Partial Exit Executed</b>
+
+📊 <b>Order Details:</b>
+• Ticket: {ticket}
+• Symbol: {position.symbol}
+• Closed Volume: {volume:.2f}
+• Remaining Volume: {remaining_volume:.2f}
+
+💰 <b>Account:</b>
+• Balance: ${account_info.balance:.2f}
+• Equity: ${account_info.equity:.2f}"""
+                            ))
+                        else:
+                            loop.run_until_complete(self._send_telegram_notification(
+                                f"""📉 <b>Partial Exit Executed</b>
+
+📊 <b>Order Details:</b>
+• Ticket: {ticket}
+• Symbol: {position.symbol}
+• Closed Volume: {volume:.2f}
+• Remaining Volume: {remaining_volume:.2f}
+
+💰 <b>Account:</b>
+• Balance: ${account_info.balance:.2f}
+• Equity: ${account_info.equity:.2f}"""
+                            ))
+                    except Exception as e:
+                        logger.error(f"Error sending partial exit notification: {e}")
+                
                 return True
             else:
                 logger.warning(f"[SENSITIVE] Failed partial exit: Ticket={ticket}, Retcode={result.retcode}, Comment={result.comment}")
