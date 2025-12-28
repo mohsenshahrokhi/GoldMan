@@ -303,11 +303,6 @@ class StrategyManager:
                     final_entry = np.sum(weighted_entries)
             else:
                 final_entry = sum(entry_points) / len(entry_points) if entry_points else 0.0
-            else:
-                if np is None:
-                    final_entry = sum(selected_entries) / len(selected_entries)
-                else:
-                    final_entry = np.mean(np.array(selected_entries))
         
         trend_scores = {
             'UP': 0.0,
