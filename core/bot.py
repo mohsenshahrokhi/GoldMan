@@ -116,6 +116,13 @@ class GoldManTradingBot:
         self.monitoring_task = asyncio.create_task(self.monitoring_loop())
         
         logger.info(f"Trading started: {symbol.value} - {strategy.value}")
+        
+        if self.telegram_bot:
+            for chat_id in self.telegram_bot.chat_ids:
+                try:
+                    await self.telegram_bot.send_status_message(chat_id, is_start=True)
+                except Exception as e:
+                    logger.error(f"Error sending start status message: {e}")
         logger.info(f"[STARTUP] Main loop task created: {self.main_loop_task}, Monitoring task created: {self.monitoring_task}")
         logger.info(f"[STARTUP] Bot is now running. Waiting for market analysis...")
     
@@ -175,10 +182,17 @@ class GoldManTradingBot:
                         
                         if self.last_price is None:
                             self.last_price = current_price
+                            logger.debug(f"[SUPER_SCALP] Initial price set: {current_price:.5f}, threshold: {price_threshold:.5f}")
                             signal = self.strategy_manager.analyze_market()
+                            if signal is None:
+                                logger.debug(f"[SUPER_SCALP] Analysis completed - No signal generated")
                         elif abs(current_price - self.last_price) >= price_threshold:
+                            price_change = current_price - self.last_price
+                            logger.debug(f"[SUPER_SCALP] Price change detected: {price_change:.5f} (threshold: {price_threshold:.5f})")
                             self.last_price = current_price
                             signal = self.strategy_manager.analyze_market()
+                            if signal is None:
+                                logger.debug(f"[SUPER_SCALP] Analysis completed - No signal generated")
                         else:
                             signal = None
                     except Exception as e:
@@ -241,7 +255,7 @@ class GoldManTradingBot:
                             state=state,
                             action=action,
                             reward=0.0,
-                            trade_id=ticket
+                            order_id=ticket
                         )
                 else:
                     if self.current_strategy != StrategyType.SUPER_SCALP and loop_count % 10 == 0:

@@ -41,6 +41,7 @@ class TelegramBot:
         self.selection_timeout = SELECTION_TIMEOUT
         self.selection_timer = None
         self.event_loop = None
+        self.chat_ids = set()
         logger.info("TelegramBot initialized successfully")
     
     async def start(self):
@@ -471,4 +472,79 @@ class TelegramBot:
         """ارسال پیام به کاربر"""
         if self.application:
             await self.application.bot.send_message(chat_id=chat_id, text=text)
+    
+    async def send_status_message(self, chat_id: int, is_start: bool = True):
+        """ارسال پیام وضعیت با اطلاعات حساب و معاملات"""
+        if not self.application:
+            return
+        
+        try:
+            controller = self.main_controller
+            account_info = controller.conn_mgr.get_account_info()
+            if account_info is None:
+                return
+            
+            cursor = controller.db_manager.conn.cursor()
+            
+            cursor.execute("SELECT COUNT(*) FROM trades WHERE status = 'OPEN'")
+            open_orders = cursor.fetchone()[0]
+            
+            cursor.execute("SELECT COUNT(*) FROM trades WHERE status = 'CLOSED'")
+            closed_orders = cursor.fetchone()[0]
+            
+            cursor.execute("SELECT SUM(profit) FROM trades WHERE status = 'CLOSED'")
+            total_profit_result = cursor.fetchone()[0]
+            total_profit = total_profit_result if total_profit_result else 0.0
+            
+            cursor.execute("SELECT COUNT(*) FROM trades WHERE status = 'CLOSED' AND profit > 0")
+            winning_orders = cursor.fetchone()[0]
+            
+            cursor.execute("SELECT COUNT(*) FROM trades WHERE status = 'CLOSED' AND profit < 0")
+            losing_orders = cursor.fetchone()[0]
+            
+            win_rate = (winning_orders / closed_orders * 100) if closed_orders > 0 else 0.0
+            
+            if is_start:
+                status_emoji = "🟢"
+                status_text = "Bot Started"
+            else:
+                status_emoji = "🔴"
+                status_text = "Bot Stopped"
+            
+            message = f"""{status_emoji} <b>{status_text}</b>
+
+💰 <b>Account Information:</b>
+• Login: {account_info.login}
+• Balance: ${account_info.balance:.2f}
+• Equity: ${account_info.equity:.2f}
+• Margin: ${account_info.margin:.2f}
+• Free Margin: ${getattr(account_info, 'free_margin', account_info.equity - account_info.margin):.2f}
+• Margin Level: {account_info.margin_level:.2f}%
+
+📊 <b>Order Statistics:</b>
+• Open Orders: {open_orders}
+• Closed Orders: {closed_orders}
+• Winning Orders: {winning_orders}
+• Losing Orders: {losing_orders}
+• Win Rate: {win_rate:.2f}%
+
+💵 <b>Performance:</b>
+• Total Profit/Loss: ${total_profit:.2f}
+• Current Balance: ${account_info.balance:.2f}
+• Equity: ${account_info.equity:.2f}"""
+            
+            if controller.current_strategy and controller.current_symbol:
+                message += f"""
+
+📈 <b>Current Trading:</b>
+• Symbol: {controller.current_symbol.value}
+• Strategy: {controller.current_strategy.value}"""
+            
+            await self.application.bot.send_message(
+                chat_id=chat_id,
+                text=message,
+                parse_mode='HTML'
+            )
+        except Exception as e:
+            logger.error(f"Error sending status message: {e}")
 
