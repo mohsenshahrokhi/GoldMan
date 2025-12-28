@@ -141,18 +141,33 @@ class StrategyManager:
                 if idx < sl_tp_timeframe_index:
                     if self.current_strategy == StrategyType.SUPER_SCALP:
                         if idx == 0:
+                            from ml.rl_engine import RLEngine
+                            rl_engine_temp = RLEngine(self.risk_manager.db)
+                            trend_weights_temp = rl_engine_temp.get_trend_weights(self.current_symbol, self.current_strategy.value)
+                            
+                            current_trend_weight = trend_weights_temp.get('trend_0', 0.33)
+                            other_trends_weight = trend_weights_temp.get('trend_1', 0.33) + trend_weights_temp.get('trend_2', 0.33)
+                            
                             timeframe_key = f"{tf.value}_{self.current_symbol}"
                             current_time = time.time()
-                            if timeframe_key not in self._last_sideways_log_time or current_time - self._last_sideways_log_time[timeframe_key] >= 30:
-                                from ml.rl_engine import RLEngine
-                                rl_engine_temp = RLEngine(self.risk_manager.db)
-                                learned_strength = rl_engine_temp.get_trend_strength(self.current_symbol, self.current_strategy.value, tf.value)
-                                if learned_strength > 0:
-                                    logger.info(f"[TREND] {tf.value}: {trend} ({learned_strength:.1f}%) - Analysis stopped (SIDEWAYS detected before SL/TP timeframe)")
-                                else:
-                                    logger.info(f"[TREND] {tf.value}: {trend} ({trend_strength:.1f}%) - Analysis stopped (SIDEWAYS detected before SL/TP timeframe)")
-                                self._last_sideways_log_time[timeframe_key] = current_time
-                            return None
+                            
+                            if current_trend_weight < 0.2 and other_trends_weight > 0.5:
+                                if timeframe_key not in self._last_sideways_log_time or current_time - self._last_sideways_log_time[timeframe_key] >= 30:
+                                    learned_strength = rl_engine_temp.get_trend_strength(self.current_symbol, self.current_strategy.value, tf.value)
+                                    if learned_strength > 0:
+                                        logger.info(f"[TREND] {tf.value}: {trend} ({learned_strength:.1f}%) - Low weight ({current_trend_weight:.2f}), continuing (other trends weight: {other_trends_weight:.2f})")
+                                    else:
+                                        logger.info(f"[TREND] {tf.value}: {trend} ({trend_strength:.1f}%) - Low weight ({current_trend_weight:.2f}), continuing (other trends weight: {other_trends_weight:.2f})")
+                                    self._last_sideways_log_time[timeframe_key] = current_time
+                            else:
+                                if timeframe_key not in self._last_sideways_log_time or current_time - self._last_sideways_log_time[timeframe_key] >= 30:
+                                    learned_strength = rl_engine_temp.get_trend_strength(self.current_symbol, self.current_strategy.value, tf.value)
+                                    if learned_strength > 0:
+                                        logger.info(f"[TREND] {tf.value}: {trend} ({learned_strength:.1f}%) - Analysis stopped (SIDEWAYS detected before SL/TP timeframe)")
+                                    else:
+                                        logger.info(f"[TREND] {tf.value}: {trend} ({trend_strength:.1f}%) - Analysis stopped (SIDEWAYS detected before SL/TP timeframe)")
+                                    self._last_sideways_log_time[timeframe_key] = current_time
+                                return None
                     else:
                         return None
             
