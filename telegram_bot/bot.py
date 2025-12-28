@@ -42,15 +42,21 @@ class TelegramBot:
         self.selection_timer = None
         self.event_loop = None
         self.chat_ids = set()
+        self.warning_logged = False
         
         import os
         channel_chat_id = os.getenv('TELEGRAM_CHAT_ID')
         if channel_chat_id:
-            try:
-                self.chat_ids.add(int(channel_chat_id))
-                logger.info(f"Channel chat_id loaded from environment: {channel_chat_id}")
-            except ValueError:
-                logger.warning(f"Invalid TELEGRAM_CHAT_ID format: {channel_chat_id}")
+            channel_chat_id = channel_chat_id.strip()
+            if channel_chat_id.startswith('@'):
+                logger.warning(f"TELEGRAM_CHAT_ID should be a number, not a username. Got: {channel_chat_id}")
+                logger.info("To get your chat_id, send /get_chat_id command to your bot")
+            else:
+                try:
+                    self.chat_ids.add(int(channel_chat_id))
+                    logger.info(f"Channel chat_id loaded from environment: {channel_chat_id}")
+                except ValueError:
+                    logger.warning(f"Invalid TELEGRAM_CHAT_ID format: {channel_chat_id}. Should be a number (e.g., -1001234567890)")
         
         logger.info("TelegramBot initialized successfully")
     
@@ -545,8 +551,16 @@ class TelegramBot:
     
     async def send_notification(self, message: str, parse_mode: str = 'HTML'):
         """ارسال اعلان به همه کاربران و کانال‌ها"""
-        if not self.application or not self.chat_ids:
-            logger.warning("No chat_ids registered. Use /add_channel command or set TELEGRAM_CHAT_ID in .env")
+        if not self.application:
+            return
+        
+        if not self.chat_ids:
+            if not self.warning_logged:
+                logger.warning("No chat_ids registered. Notifications will not be sent.")
+                logger.info("To enable notifications:")
+                logger.info("  1. Set TELEGRAM_CHAT_ID in .env file (get it with /get_chat_id command)")
+                logger.info("  2. Or use /add_channel command in Telegram bot")
+                self.warning_logged = True
             return
         
         success_count = 0
