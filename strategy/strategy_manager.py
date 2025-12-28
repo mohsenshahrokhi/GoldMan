@@ -287,13 +287,19 @@ class StrategyManager:
                 trend_scores[trend] += weight
         
         dominant_trend = max(trend_scores, key=trend_scores.get)
+        
+        if dominant_trend == "SIDEWAYS":
+            if self.current_strategy == StrategyType.SUPER_SCALP:
+                logger.info(f"[ENTRY] Rejected - Dominant trend is SIDEWAYS (scores: {trend_scores})")
+            return None
+        
         direction = "BUY" if dominant_trend == "UP" else "SELL"
         
         trend_confidence = trend_scores[dominant_trend] / sum(trend_scores.values()) if sum(trend_scores.values()) > 0 else 0.5
         
         if self.current_strategy == StrategyType.SUPER_SCALP:
             if self.current_strategy == StrategyType.SUPER_SCALP:
-                logger.info(f"[TREND] {dominant_trend} | [ENTRY] {direction} @ {final_entry:.2f}")
+                logger.info(f"[TREND] {dominant_trend} (confidence: {trend_confidence:.2f}) | [ENTRY] {direction} @ {final_entry:.2f}")
         else:
             trend_distribution = {t: trends.count(t) for t in set(trends)}
             logger.info(f"[MARKET_ANALYSIS] Market Regime: Trend={dominant_trend}, Distribution={trend_distribution}, Direction={direction}, Entry={final_entry:.5f}")
@@ -312,7 +318,7 @@ class StrategyManager:
         
         if sl == 0.0 or tp == 0.0:
             if self.current_strategy == StrategyType.SUPER_SCALP:
-                logger.debug("[ENTRY] Invalid SL/TP calculated")
+                logger.info("[ENTRY] Rejected - Invalid SL/TP calculated (SL=0.0 or TP=0.0)")
             return None
         
         symbol_info = self.data_provider.get_symbol_info(self.current_symbol)
@@ -341,8 +347,7 @@ class StrategyManager:
         
         if rr_ratio < min_rr_ratio:
             if self.current_strategy == StrategyType.SUPER_SCALP:
-                if self.current_strategy != StrategyType.SUPER_SCALP:
-                    logger.info(f"[ENTRY] Rejected - R/R={rr_ratio:.2f} < {min_rr_ratio:.2f}")
+                logger.info(f"[ENTRY] Rejected - R/R={rr_ratio:.2f} < {min_rr_ratio:.2f}")
             else:
                 logger.info(f"[MARKET_ANALYSIS] R/R ratio ({rr_ratio:.2f}) is below minimum ({min_rr_ratio:.2f}). Trade rejected.")
             return None
