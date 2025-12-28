@@ -79,11 +79,7 @@ class StrategyManager:
         elif self.current_strategy == StrategyType.SCALP:
             sl_tp_timeframe = TimeFrame.M5
         else:
-            timeframes_super_scalp = self.strategy_timeframes[StrategyType.SUPER_SCALP]
-            if len(timeframes_super_scalp) >= 2:
-                sl_tp_timeframe = timeframes_super_scalp[len(timeframes_super_scalp) - 2]
-            else:
-                sl_tp_timeframe = TimeFrame.M3
+            sl_tp_timeframe = TimeFrame.M1
         
         sl_tp_timeframe_index = None
         for idx, tf in enumerate(timeframes):

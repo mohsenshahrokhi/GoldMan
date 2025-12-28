@@ -219,13 +219,13 @@ class RiskManager:
             parameters = {}
         
         if strategy == "SUPER_SCALP":
-            atr_multiplier_sl = parameters.get('atr_multiplier_sl', 0.5)
-            atr_multiplier_tp = parameters.get('atr_multiplier_tp', 1.0)
+            atr_multiplier_sl = parameters.get('atr_multiplier_sl', 0.3)
+            atr_multiplier_tp = parameters.get('atr_multiplier_tp', 0.6)
             garch_alpha_0 = parameters.get('garch_alpha_0', 0.0001)
             garch_alpha_1 = parameters.get('garch_alpha_1', 0.1)
             garch_beta_1 = parameters.get('garch_beta_1', 0.8)
-            garch_k = parameters.get('garch_k', 1.0)
-            node_safety_margin = parameters.get('node_safety_margin', 2.0)
+            garch_k = parameters.get('garch_k', 0.6)
+            node_safety_margin = parameters.get('node_safety_margin', 1.2)
             node_spread_factor = parameters.get('node_spread_factor', 1.0)
         elif strategy == "SCALP":
             atr_multiplier_sl = parameters.get('atr_multiplier_sl', 1.0)
