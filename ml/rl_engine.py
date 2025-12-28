@@ -23,10 +23,10 @@ class RLEngine:
         self.optimization_count = {}
         
         self.default_weights = {
-            'node': 0.25,
-            'atr': 0.25,
-            'garch': 0.25,
-            'fixed_rr': 0.25
+            'node': 0.95,
+            'atr': 0.0167,
+            'garch': 0.0167,
+            'fixed_rr': 0.0166
         }
         
         self.default_entry_weights = {
