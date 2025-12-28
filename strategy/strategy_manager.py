@@ -206,19 +206,49 @@ class StrategyManager:
         entry_weights = rl_engine.get_entry_weights(self.current_symbol, self.current_strategy.value)
         trend_weights = rl_engine.get_trend_weights(self.current_symbol, self.current_strategy.value)
         
+        base_weights = [
+            entry_weights.get('entry_0', 0.25),
+            entry_weights.get('entry_1', 0.25),
+            entry_weights.get('entry_2', 0.25),
+            entry_weights.get('entry_3', 0.25)
+        ]
+        
+        adjusted_weights = []
+        for i in range(4):
+            base_weight = base_weights[i]
+            if self.current_strategy == StrategyType.SUPER_SCALP and i < len(trend_strengths):
+                trend_strength = trend_strengths[i]
+                learned_strength = rl_engine.get_trend_strength(self.current_symbol, self.current_strategy.value, timeframes[i].value)
+                if learned_strength > 0:
+                    strength_factor = learned_strength / 100.0
+                else:
+                    strength_factor = trend_strength / 100.0 if trend_strength > 0 else 0.5
+                
+                adjusted_weight = base_weight * strength_factor
+            else:
+                adjusted_weight = base_weight
+            
+            adjusted_weights.append(adjusted_weight)
+        
+        total_weight = sum(adjusted_weights)
+        if total_weight > 0:
+            adjusted_weights = [w / total_weight for w in adjusted_weights]
+        else:
+            adjusted_weights = base_weights
+        
         if np is None:
             final_entry = (
-                entry_weights.get('entry_0', 0.25) * entry_points[0] +
-                entry_weights.get('entry_1', 0.25) * entry_points[1] +
-                entry_weights.get('entry_2', 0.25) * entry_points[2] +
-                entry_weights.get('entry_3', 0.25) * entry_points[3]
+                adjusted_weights[0] * entry_points[0] +
+                adjusted_weights[1] * entry_points[1] +
+                adjusted_weights[2] * entry_points[2] +
+                adjusted_weights[3] * entry_points[3]
             )
         else:
             weighted_entries = np.array([
-                entry_weights.get('entry_0', 0.25) * entry_points[0],
-                entry_weights.get('entry_1', 0.25) * entry_points[1],
-                entry_weights.get('entry_2', 0.25) * entry_points[2],
-                entry_weights.get('entry_3', 0.25) * entry_points[3]
+                adjusted_weights[0] * entry_points[0],
+                adjusted_weights[1] * entry_points[1],
+                adjusted_weights[2] * entry_points[2],
+                adjusted_weights[3] * entry_points[3]
             ])
             final_entry = np.sum(weighted_entries)
         
