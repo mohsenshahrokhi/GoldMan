@@ -147,6 +147,9 @@ class TelegramBot:
     
     async def start_command(self, update: 'Update', context: Any):
         """دستور /start"""
+        if update.message:
+            self.chat_ids.add(update.message.chat_id)
+        
         if self.main_controller.is_running():
             await update.message.reply_text(
                 "🤖 ربات در حال اجرا است!\n\n"
@@ -275,6 +278,10 @@ class TelegramBot:
                     self.selected_symbol,
                     self.selected_strategy
                 )
+                
+                if query.message:
+                    self.chat_ids.add(query.message.chat_id)
+                    await self.send_status_message(query.message.chat_id, is_start=True)
             except Exception as e:
                 logger.error(f"Error starting trading: {e}", exc_info=True)
                 await query.edit_message_text(f"❌ خطا در راه‌اندازی ربات: {e}")
@@ -296,7 +303,10 @@ class TelegramBot:
         
         elif data == "stop_confirm":
             await query.edit_message_text("⏹️ در حال توقف ربات...")
+            chat_id = query.message.chat_id if query.message else None
             await self.main_controller.stop()
+            if chat_id:
+                await self.send_status_message(chat_id, is_start=False)
         
         elif data == "stop_cancel":
             await query.edit_message_text("✅ توقف لغو شد.")
