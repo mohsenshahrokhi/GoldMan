@@ -279,9 +279,12 @@ class OrderExecutor:
                     symbol_info = strategy_manager.data_provider.get_symbol_info(symbol)
                 
                 if symbol_info:
-                    tolerance = symbol_info.point * 10
+                    if symbol_info.digits == 3 or symbol_info.digits == 5:
+                        tolerance = symbol_info.point * 100
+                    else:
+                        tolerance = symbol_info.point * 50
                 else:
-                    tolerance = 0.1
+                    tolerance = 1.0
                 
                 sl_changed = abs(sl_current - original_sl) > tolerance if original_sl > 0 else sl_current != original_sl
                 tp_changed = abs(tp_current - original_tp) > tolerance if original_tp > 0 else tp_current != original_tp
@@ -290,29 +293,28 @@ class OrderExecutor:
                     import time
                     current_time = time.time()
                     last_warning_time = self._last_sl_tp_warning.get(ticket, 0)
+                    should_warn = current_time - last_warning_time >= 60
                     
-                    if current_time - last_warning_time >= 60:
-                        logger.warning(f"[SENSITIVE] SL/TP changed by user detected: Ticket={ticket}, OriginalSL={original_sl:.5f}, CurrentSL={sl_current:.5f}, OriginalTP={original_tp:.5f}, CurrentTP={tp_current:.5f}. Restoring original values.")
+                    if should_warn:
+                        logger.warning(f"[SENSITIVE] SL/TP changed by user detected: Ticket={ticket}, OriginalSL={original_sl:.5f}, CurrentSL={sl_current:.5f}, OriginalTP={original_tp:.5f}, CurrentTP={tp_current:.5f}, Tolerance={tolerance:.5f}. Restoring original values.")
                         self._last_sl_tp_warning[ticket] = current_time
                     
-                    request = {
-                        "action": mt5.TRADE_ACTION_SLTP,
-                        "symbol": symbol,
-                        "position": ticket,
-                        "sl": original_sl,
-                        "tp": original_tp,
-                    }
-                    result = mt5.order_send(request)
-                    if result.retcode == mt5.TRADE_RETCODE_DONE:
-                        if current_time - last_warning_time >= 60:
+                    if should_warn:
+                        request = {
+                            "action": mt5.TRADE_ACTION_SLTP,
+                            "symbol": symbol,
+                            "position": ticket,
+                            "sl": original_sl,
+                            "tp": original_tp,
+                        }
+                        result = mt5.order_send(request)
+                        if result.retcode == mt5.TRADE_RETCODE_DONE:
                             logger.info(f"[SENSITIVE] SL/TP restored successfully: Ticket={ticket}, SL={original_sl:.5f}, TP={original_tp:.5f}")
-                        self._last_sl_tp_warning.pop(ticket, None)
-                    elif result.retcode == 10025:
-                        if current_time - last_warning_time >= 60:
+                            self._last_sl_tp_warning.pop(ticket, None)
+                        elif result.retcode == 10025:
                             logger.debug(f"[SENSITIVE] SL/TP already at original values: Ticket={ticket}, SL={original_sl:.5f}, TP={original_tp:.5f}")
-                        self._last_sl_tp_warning.pop(ticket, None)
-                    else:
-                        if current_time - last_warning_time >= 60:
+                            self._last_sl_tp_warning.pop(ticket, None)
+                        else:
                             logger.error(f"[SENSITIVE] Failed to restore SL/TP: Ticket={ticket}, Retcode={result.retcode}, Comment={result.comment}")
             
             if position.type == mt5.ORDER_TYPE_BUY:

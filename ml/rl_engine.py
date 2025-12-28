@@ -70,7 +70,9 @@ class RLEngine:
             'partial_exit_threshold_1': 50.0,
             'partial_exit_threshold_2': 75.0,
             'partial_exit_percentage_1': 0.5,
-            'partial_exit_percentage_2': 0.3
+            'partial_exit_percentage_2': 0.3,
+            'max_sl_distance_percent': 0.004,
+            'max_tp_distance_percent': 0.008
         }
         
         self.parameter_constraints = {
@@ -94,13 +96,28 @@ class RLEngine:
             'partial_exit_threshold_1': (40.0, 60.0),
             'partial_exit_threshold_2': (70.0, 80.0),
             'partial_exit_percentage_1': (0.3, 0.7),
-            'partial_exit_percentage_2': (0.2, 0.5)
+            'partial_exit_percentage_2': (0.2, 0.5),
+            'max_sl_distance_percent': (0.001, 0.01),
+            'max_tp_distance_percent': (0.002, 0.02)
         }
     
     def calculate_reward(self, order_profit: float, transaction_cost: float, 
                         risk_penalty: float, missed_opportunity: float = 0.0,
                         rr_ratio: float = 1.0, hold_time: float = 0.0,
-                        max_profit: float = 0.0, drawdown: float = 0.0) -> float:
+                        max_profit: float = 0.0, drawdown: float = 0.0,
+                        close_reason: str = "UNKNOWN", trailing_stop_applied: bool = False) -> float:
+        if close_reason == "TP":
+            return abs(order_profit) * 0.1
+        
+        if order_profit < 0:
+            if trailing_stop_applied:
+                return order_profit * 0.5
+            else:
+                return order_profit
+        
+        if order_profit > 0 and max_profit > order_profit:
+            return 0.0
+        
         base_reward = order_profit - transaction_cost - risk_penalty - missed_opportunity
         
         rr_bonus = 0.0
@@ -138,6 +155,16 @@ class RLEngine:
     def get_parameters(self, symbol: str, strategy: str) -> Dict[str, float]:
         params = self.db.get_rl_weights(symbol, strategy)
         result = self.default_parameters.copy()
+        
+        if strategy == "SUPER_SCALP" or strategy == "Super Scalp":
+            result['max_sl_distance_percent'] = 0.002
+            result['max_tp_distance_percent'] = 0.004
+        elif strategy == "SCALP" or strategy == "Scalp":
+            result['max_sl_distance_percent'] = 0.02
+            result['max_tp_distance_percent'] = 0.04
+        else:
+            result['max_sl_distance_percent'] = 0.05
+            result['max_tp_distance_percent'] = 0.10
         
         for param_name in self.default_parameters.keys():
             if param_name in params:
@@ -391,6 +418,103 @@ class RLEngine:
         
         all_params = {**weights, **parameters, **entry_weights, **trend_weights}
         return all_params
+    
+    def optimize_based_on_result(self, symbol: str, strategy: str, order_id: int,
+                                 close_reason: str, trailing_stop_applied: bool,
+                                 max_profit: float, order_profit: float):
+        if close_reason == "TP":
+            return
+        
+        if order_profit < 0:
+            if trailing_stop_applied:
+                self.optimize_entry_weights(symbol, strategy)
+                self.optimize_trend_weights(symbol, strategy)
+                self.optimize_trailing_stop_parameters(symbol, strategy)
+            else:
+                self.optimize_entry_weights(symbol, strategy)
+                self.optimize_trend_weights(symbol, strategy)
+        elif order_profit > 0 and max_profit > order_profit:
+            self.optimize_risk_management_parameters(symbol, strategy)
+    
+    def optimize_trailing_stop_parameters(self, symbol: str, strategy: str):
+        cursor = self.db.conn.cursor()
+        cursor.execute("""
+            SELECT state, action, reward, order_id
+            FROM rl_experiences
+            WHERE symbol = ? AND strategy = ? AND closed_by_sl_tp = 1
+            ORDER BY timestamp DESC
+            LIMIT 200
+        """, (symbol, strategy))
+        
+        experiences = cursor.fetchall()
+        if len(experiences) < 20:
+            return
+        
+        trailing_params = ['trailing_stop_threshold_1', 'trailing_stop_threshold_2',
+                          'trailing_stop_threshold_3', 'trailing_stop_threshold_4',
+                          'trailing_stop_threshold_5']
+        
+        for param_name in trailing_params:
+            param_performance = []
+            for exp in experiences:
+                try:
+                    action = json.loads(exp['action'])
+                    reward = exp['reward']
+                    param_value = action.get(param_name, self.default_parameters.get(param_name, 0.0))
+                    param_performance.append((param_value, reward))
+                except:
+                    continue
+            
+            if len(param_performance) >= 10:
+                avg_reward = sum(r for _, r in param_performance) / len(param_performance)
+                if avg_reward < 0:
+                    current_value = self.get_parameters(symbol, strategy).get(param_name, self.default_parameters[param_name])
+                    new_value = current_value * (1 - self.learning_rate * 0.1)
+                    new_value = max(self.parameter_constraints[param_name][0],
+                                   min(self.parameter_constraints[param_name][1], new_value))
+                    params = self.get_parameters(symbol, strategy)
+                    params[param_name] = new_value
+                    self.save_parameters(symbol, strategy, params)
+    
+    def optimize_risk_management_parameters(self, symbol: str, strategy: str):
+        cursor = self.db.conn.cursor()
+        cursor.execute("""
+            SELECT state, action, reward, order_id
+            FROM rl_experiences
+            WHERE symbol = ? AND strategy = ? AND closed_by_sl_tp = 1
+            ORDER BY timestamp DESC
+            LIMIT 200
+        """, (symbol, strategy))
+        
+        experiences = cursor.fetchall()
+        if len(experiences) < 20:
+            return
+        
+        risk_params = ['max_risk_per_trade', 'min_rr_ratio', 'atr_multiplier_sl',
+                      'atr_multiplier_tp', 'node_safety_margin', 'max_sl_distance_percent',
+                      'max_tp_distance_percent']
+        
+        for param_name in risk_params:
+            param_performance = []
+            for exp in experiences:
+                try:
+                    action = json.loads(exp['action'])
+                    reward = exp['reward']
+                    param_value = action.get(param_name, self.default_parameters.get(param_name, 0.0))
+                    param_performance.append((param_value, reward))
+                except:
+                    continue
+            
+            if len(param_performance) >= 10:
+                avg_reward = sum(r for _, r in param_performance) / len(param_performance)
+                if abs(avg_reward) < 0.01:
+                    current_value = self.get_parameters(symbol, strategy).get(param_name, self.default_parameters[param_name])
+                    new_value = current_value * (1 + self.learning_rate * 0.05)
+                    new_value = max(self.parameter_constraints[param_name][0],
+                                   min(self.parameter_constraints[param_name][1], new_value))
+                    params = self.get_parameters(symbol, strategy)
+                    params[param_name] = new_value
+                    self.save_parameters(symbol, strategy, params)
     
     def optimize_entry_weights(self, symbol: str, strategy: str) -> Dict[str, float]:
         self._update_learning_rate(symbol, strategy)

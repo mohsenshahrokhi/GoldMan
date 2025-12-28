@@ -58,6 +58,7 @@ class GoldManTradingBot:
         self.last_price = None
         self.last_activity_log_time = None
         self.last_activity_time = None
+        self.max_profit_tracker = {}  # Track max profit for each open position
     
     async def initialize(self):
         logger.info("Starting bot initialization...")
@@ -281,7 +282,7 @@ class GoldManTradingBot:
                             'method': 'node',
                             'sl': signal.stop_loss,
                             'tp': signal.take_profit,
-                            **{k: v for k, v in params.items() if k.startswith(('atr_', 'garch_', 'node_', 'min_rr', 'max_risk'))}
+                            **{k: v for k, v in params.items() if k.startswith(('atr_', 'garch_', 'node_', 'min_rr', 'max_risk', 'max_sl_distance', 'max_tp_distance'))}
                         }
                         self.rl_engine.save_experience(
                             symbol=signal.symbol,
@@ -338,6 +339,15 @@ class GoldManTradingBot:
                         closed_positions.append(ticket)
                 
                 if mt5:
+                    for position in positions:
+                        ticket = position.ticket
+                        current_profit = position.profit
+                        if ticket not in self.max_profit_tracker:
+                            self.max_profit_tracker[ticket] = current_profit
+                        else:
+                            if current_profit > self.max_profit_tracker[ticket]:
+                                self.max_profit_tracker[ticket] = current_profit
+                    
                     for ticket in closed_positions:
                         position = mt5.history_deals_get(ticket=ticket)
                         if position:
@@ -358,14 +368,17 @@ class GoldManTradingBot:
                                                   "SO" if close_reason == mt5.DEAL_REASON_SO else \
                                                   "MANUAL"
                                 
-                                logger.info(f"[SENSITIVE] Trade closed: Ticket={ticket}, TotalProfit={total_profit:.2f}, CloseReason={close_reason_str}, Balance={account_info.balance:.2f}, Equity={account_info.equity:.2f}")
+                                max_profit = self.max_profit_tracker.pop(ticket, total_profit)
+                                
+                                logger.info(f"[SENSITIVE] Trade closed: Ticket={ticket}, TotalProfit={total_profit:.2f}, MaxProfit={max_profit:.2f}, CloseReason={close_reason_str}, Balance={account_info.balance:.2f}, Equity={account_info.equity:.2f}")
                                 cursor.execute("SELECT * FROM trades WHERE ticket = ?", (ticket,))
                                 order_data = cursor.fetchone()
                                 
                                 if not self.db_manager.update_order(ticket, {
                                     'status': 'CLOSED',
                                     'exit_time': datetime.now(),
-                                    'profit': total_profit
+                                    'profit': total_profit,
+                                    'max_profit': max_profit
                                 }):
                                     logger.warning(f"Failed to update trade {ticket} in database after monitoring detected closure")
                                 
@@ -374,12 +387,41 @@ class GoldManTradingBot:
                                 
                                 if is_sl_tp_close:
                                     self.rl_engine.update_experience_closed_by_sl_tp(ticket, 1)
+                                    
+                                    trailing_stop_applied = order_data.get('trailing_stop_applied', 0) == 1 if order_data else False
+                                    
+                                    reward = self.rl_engine.calculate_reward(
+                                        order_profit=total_profit,
+                                        transaction_cost=abs(total_profit) * 0.001,
+                                        risk_penalty=0.0,
+                                        rr_ratio=1.0,
+                                        hold_time=0.0,
+                                        max_profit=max_profit,
+                                        close_reason=close_reason_str,
+                                        trailing_stop_applied=trailing_stop_applied
+                                    )
+                                    
+                                    cursor.execute("""
+                                        UPDATE rl_experiences 
+                                        SET reward = ? 
+                                        WHERE order_id = ? AND symbol = ? AND strategy = ?
+                                    """, (reward, ticket, order_data['symbol'], self.current_strategy.value))
+                                    
+                                    self.rl_engine.optimize_based_on_result(
+                                        symbol=order_data['symbol'],
+                                        strategy=self.current_strategy.value,
+                                        order_id=ticket,
+                                        close_reason=close_reason_str,
+                                        trailing_stop_applied=trailing_stop_applied,
+                                        max_profit=max_profit,
+                                        order_profit=total_profit
+                                    )
                                 
                                 if self.current_strategy == StrategyType.SUPER_SCALP and order_data and is_sl_tp_close:
                                     import json
                                     cursor.execute("""
                                         SELECT state, timeframe FROM rl_experiences 
-                                        WHERE trade_id = ? AND symbol = ? AND strategy = ?
+                                        WHERE order_id = ? AND symbol = ? AND strategy = ?
                                         ORDER BY timestamp DESC LIMIT 1
                                     """, (ticket, order_data['symbol'], self.current_strategy.value))
                                     exp_data = cursor.fetchone()
@@ -390,13 +432,6 @@ class GoldManTradingBot:
                                             if 'trend_strengths' in state and state['trend_strengths']:
                                                 timeframes_list = state.get('timeframes', [])
                                                 if timeframes_list and len(state['trend_strengths']) == len(timeframes_list):
-                                                    reward = self.rl_engine.calculate_reward(
-                                                        order_profit=total_profit,
-                                                        transaction_cost=abs(total_profit) * 0.001,
-                                                        risk_penalty=0.0,
-                                                        rr_ratio=1.0,
-                                                        hold_time=0.0
-                                                    )
                                                     for i, tf_name in enumerate(timeframes_list[:3]):
                                                         if i < len(state['trend_strengths']):
                                                             actual_strength = state['trend_strengths'][i]
