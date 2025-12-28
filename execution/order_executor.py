@@ -27,6 +27,15 @@ class OrderExecutor:
         self.current_position = None
         self.frozen_positions = []
         self.data_provider = None
+        self.main_controller = None
+    
+    async def _send_telegram_notification(self, message: str):
+        """ارسال اعلان به تلگرام"""
+        if self.main_controller and self.main_controller.telegram_bot:
+            try:
+                await self.main_controller.telegram_bot.send_notification(message)
+            except Exception as e:
+                logger.error(f"Error sending Telegram notification: {e}")
     
     def get_filling_mode(self, symbol_info) -> int:
         """تشخیص filling mode مناسب برای symbol"""
@@ -416,6 +425,36 @@ class OrderExecutor:
             result = mt5.order_send(request)
             if result.retcode == mt5.TRADE_RETCODE_DONE:
                 logger.info(f"[SENSITIVE] SL updated successfully: Ticket={ticket}, Symbol={position.symbol}, OldSL={old_sl:.5f}, NewSL={new_sl:.5f}, TP={old_tp:.5f}")
+                
+                if self.main_controller and self.main_controller.telegram_bot:
+                    import asyncio
+                    try:
+                        loop = asyncio.get_event_loop()
+                        if loop.is_running():
+                            asyncio.create_task(self._send_telegram_notification(
+                                f"""📈 <b>Trailing Stop Updated</b>
+
+📊 <b>Order Details:</b>
+• Ticket: {ticket}
+• Symbol: {position.symbol}
+• Old SL: {old_sl:.5f}
+• New SL: {new_sl:.5f}
+• TP: {old_tp:.5f}"""
+                            ))
+                        else:
+                            loop.run_until_complete(self._send_telegram_notification(
+                                f"""📈 <b>Trailing Stop Updated</b>
+
+📊 <b>Order Details:</b>
+• Ticket: {ticket}
+• Symbol: {position.symbol}
+• Old SL: {old_sl:.5f}
+• New SL: {new_sl:.5f}
+• TP: {old_tp:.5f}"""
+                            ))
+                    except Exception as e:
+                        logger.error(f"Error sending trailing stop notification: {e}")
+                
                 return True
             else:
                 logger.warning(f"[SENSITIVE] Failed to update SL: Ticket={ticket}, Retcode={result.retcode}, Comment={result.comment}")

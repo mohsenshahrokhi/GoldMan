@@ -483,6 +483,21 @@ class TelegramBot:
         if self.application:
             await self.application.bot.send_message(chat_id=chat_id, text=text)
     
+    async def send_notification(self, message: str, parse_mode: str = 'HTML'):
+        """ارسال اعلان به همه کاربران"""
+        if not self.application or not self.chat_ids:
+            return
+        
+        for chat_id in self.chat_ids:
+            try:
+                await self.application.bot.send_message(
+                    chat_id=chat_id,
+                    text=message,
+                    parse_mode=parse_mode
+                )
+            except Exception as e:
+                logger.error(f"Error sending notification to {chat_id}: {e}")
+    
     async def send_status_message(self, chat_id: int, is_start: bool = True):
         """ارسال پیام وضعیت با اطلاعات حساب و معاملات"""
         if not self.application:

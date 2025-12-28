@@ -79,6 +79,7 @@ class GoldManTradingBot:
         
         self.order_executor = OrderExecutor(self.conn_mgr, self.db_manager)
         self.order_executor.set_data_provider(self.data_provider)
+        self.order_executor.main_controller = self
         
         self.rl_engine = RLEngine(self.db_manager)
         
@@ -232,6 +233,26 @@ class GoldManTradingBot:
                     if ticket:
                         logger.info(f"[MAIN_LOOP] Trade opened successfully: Ticket {ticket}")
                         self.last_activity_time = time.time()
+                        
+                        if self.telegram_bot:
+                            account_info = self.conn_mgr.get_account_info()
+                            message = f"""✅ <b>Order Opened</b>
+
+📊 <b>Order Details:</b>
+• Ticket: {ticket}
+• Symbol: {signal.symbol}
+• Direction: {signal.direction}
+• Entry: {signal.entry_price:.5f}
+• SL: {signal.stop_loss:.5f}
+• TP: {signal.take_profit:.5f}
+• Lot Size: {signal.lot_size:.2f}
+• R/R: {signal.confidence:.2f}
+
+💰 <b>Account:</b>
+• Balance: ${account_info.balance:.2f}
+• Equity: ${account_info.equity:.2f}
+• Free Margin: ${getattr(account_info, 'free_margin', account_info.equity - account_info.margin):.2f}"""
+                            await self.telegram_bot.send_notification(message)
                         
                         params = self.rl_engine.get_parameters(signal.symbol, self.current_strategy.value)
                         
