@@ -665,12 +665,57 @@ class OrderExecutor:
                 else:
                     logger.info(f"[SENSITIVE] Position closed successfully: Ticket={ticket}, Symbol={symbol}, Volume={volume:.2f}")
                 
+                cursor = self.db.conn.cursor()
+                cursor.execute("SELECT * FROM trades WHERE ticket = ?", (ticket,))
+                order_data = cursor.fetchone()
+                
                 if not self.db.update_order(ticket, {
                     'status': 'CLOSED',
                     'exit_time': datetime.now(),
                     'exit_price': price
                 }):
                     logger.warning(f"Failed to update trade {ticket} in database after closing")
+                
+                if self.main_controller and self.main_controller.telegram_bot and order_data:
+                    import asyncio
+                    try:
+                        profit = order_data['profit'] if 'profit' in order_data else 0.0
+                        profit_emoji = "✅" if profit > 0 else "❌"
+                        loop = asyncio.get_event_loop()
+                        if loop.is_running():
+                            asyncio.create_task(self._send_telegram_notification(
+                                f"""{profit_emoji} <b>Order Closed</b>
+
+📊 <b>Order Details:</b>
+• Ticket: {ticket}
+• Symbol: {symbol}
+• Direction: {order_data['direction']}
+• Entry: {order_data['entry_price']:.5f}
+• Exit: {price:.5f}
+• Profit/Loss: ${profit:.2f}
+
+💰 <b>Account:</b>
+• Balance: ${account_info.balance:.2f}
+• Equity: ${account_info.equity:.2f}"""
+                            ))
+                        else:
+                            loop.run_until_complete(self._send_telegram_notification(
+                                f"""{profit_emoji} <b>Order Closed</b>
+
+📊 <b>Order Details:</b>
+• Ticket: {ticket}
+• Symbol: {symbol}
+• Direction: {order_data['direction']}
+• Entry: {order_data['entry_price']:.5f}
+• Exit: {price:.5f}
+• Profit/Loss: ${profit:.2f}
+
+💰 <b>Account:</b>
+• Balance: ${account_info.balance:.2f}
+• Equity: ${account_info.equity:.2f}"""
+                            ))
+                    except Exception as e:
+                        logger.error(f"Error sending close position notification: {e}")
                 
                 self.current_position = None
                 return True
