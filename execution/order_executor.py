@@ -273,7 +273,7 @@ class OrderExecutor:
                 self.close_position(ticket)
                 return False
             
-            self.apply_trailing_stop(position, profit_pct, risk_manager, market_engine)
+            self.apply_trailing_stop(position, profit_pct, risk_manager, market_engine, strategy_manager.current_strategy)
             
             self.apply_partial_exit(position, profit_pct, risk_manager)
             
@@ -284,7 +284,8 @@ class OrderExecutor:
             return False
     
     def apply_trailing_stop(self, position: Any, profit_pct: float, 
-                           risk_manager: RiskManager, market_engine: MarketEngine):
+                           risk_manager: RiskManager, market_engine: MarketEngine,
+                           strategy: Any = None):
         if mt5 is None or self.data_provider is None:
             return
             
