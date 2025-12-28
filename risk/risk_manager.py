@@ -72,7 +72,10 @@ class RiskManager:
                                    symbol: str, df: pd.DataFrame, 
                                    market_engine: 'MarketEngine',
                                    safety_margin_points: float = 5.0,
-                                   spread_factor: float = 1.0) -> Tuple[float, float]:
+                                   spread_factor: float = 1.0,
+                                   strategy: str = None,
+                                   max_sl_distance: float = None,
+                                   max_tp_distance: float = None) -> Tuple[float, float]:
         if mt5 is None:
             return 0.0, 0.0
             
@@ -88,29 +91,59 @@ class RiskManager:
         
         adjustment = spread + safety_margin + commission
         
+        if strategy == "SUPER_SCALP" and max_sl_distance and max_tp_distance:
+            sl_fallback = entry_price - max_sl_distance
+            tp_fallback = entry_price + max_tp_distance
+        elif strategy == "SCALP":
+            sl_fallback = entry_price * 0.98
+            tp_fallback = entry_price * 1.04
+        else:
+            sl_fallback = entry_price * 0.995
+            tp_fallback = entry_price * 1.005
+        
         if direction == "BUY":
             sl_node = market_engine.find_nearest_node(df, entry_price, "below")
             if sl_node is None:
-                sl_node = entry_price * 0.995
+                sl_node = sl_fallback
+            else:
+                if strategy == "SUPER_SCALP" and max_sl_distance:
+                    if abs(sl_node - entry_price) > max_sl_distance:
+                        sl_node = sl_fallback
+                elif abs(sl_node - entry_price) > entry_price * 0.01:
+                    sl_node = sl_fallback
             
             sl = sl_node - adjustment
             
             tp_node = market_engine.find_nearest_node(df, entry_price, "above")
             if tp_node is None:
-                tp_node = entry_price * 1.005
+                tp_node = tp_fallback
+            else:
+                if strategy == "SUPER_SCALP" and max_tp_distance:
+                    if abs(tp_node - entry_price) > max_tp_distance:
+                        tp_node = tp_fallback
+                elif abs(tp_node - entry_price) > entry_price * 0.02:
+                    tp_node = tp_fallback
             
             tp = tp_node - adjustment
         
         else:
             sl_node = market_engine.find_nearest_node(df, entry_price, "above")
             if sl_node is None:
-                sl_node = entry_price * 1.005
+                sl_node = entry_price + abs(entry_price - sl_fallback)
+            else:
+                max_sl_check = max_sl_distance if (strategy == "SUPER_SCALP" and max_sl_distance) else (entry_price * 0.01)
+                if abs(sl_node - entry_price) > max_sl_check:
+                    sl_node = entry_price + abs(entry_price - sl_fallback)
             
             sl = sl_node + adjustment
             
             tp_node = market_engine.find_nearest_node(df, entry_price, "below")
             if tp_node is None:
-                tp_node = entry_price * 0.995
+                tp_node = entry_price - abs(entry_price - tp_fallback)
+            else:
+                max_tp_check = max_tp_distance if (strategy == "SUPER_SCALP" and max_tp_distance) else (entry_price * 0.02)
+                if abs(tp_node - entry_price) > max_tp_check:
+                    tp_node = entry_price - abs(entry_price - tp_fallback)
             
             tp = tp_node + adjustment
         
@@ -250,7 +283,9 @@ class RiskManager:
             entry_price, direction, symbol, df, market_engine,
             safety_margin_points=node_safety_margin,
             spread_factor=node_spread_factor,
-            strategy=strategy
+            strategy=strategy,
+            max_sl_distance=max_sl_distance if strategy == "SUPER_SCALP" else None,
+            max_tp_distance=max_tp_distance if strategy == "SUPER_SCALP" else None
         )
         sl_atr, tp_atr = self.calculate_sl_tp_atr_based(
             entry_price, direction, df,
@@ -345,8 +380,22 @@ class RiskManager:
         total_sl_weight = sum(w for _, _, w in valid_sl_values)
         total_tp_weight = sum(w for _, _, w in valid_tp_values)
         
-        sl_final = sum(sl * w for _, sl, w in valid_sl_values) / total_sl_weight if total_sl_weight > 0 else entry_price * 0.99
-        tp_weighted = sum(tp * w for _, tp, w in valid_tp_values) / total_tp_weight if total_tp_weight > 0 else entry_price * 1.01
+        if strategy == "SUPER_SCALP":
+            sl_fallback_final = entry_price - (entry_price * 0.004)
+            tp_fallback_final = entry_price + (entry_price * 0.008)
+        elif strategy == "SCALP":
+            sl_fallback_final = entry_price * 0.98
+            tp_fallback_final = entry_price * 1.04
+        else:
+            sl_fallback_final = entry_price * 0.99
+            tp_fallback_final = entry_price * 1.01
+        
+        if direction == "SELL":
+            sl_fallback_final = entry_price + abs(entry_price - sl_fallback_final)
+            tp_fallback_final = entry_price - abs(entry_price - tp_fallback_final)
+        
+        sl_final = sum(sl * w for _, sl, w in valid_sl_values) / total_sl_weight if total_sl_weight > 0 else sl_fallback_final
+        tp_weighted = sum(tp * w for _, tp, w in valid_tp_values) / total_tp_weight if total_tp_weight > 0 else tp_fallback_final
         
         min_rr_ratio = parameters.get('min_rr_ratio', MIN_RR_RATIO)
         tp_fixed = self.calculate_sl_tp_fixed_rr(entry_price, sl_final, min_rr_ratio)
