@@ -268,8 +268,8 @@ class RiskManager:
         valid_tp_values = []
         
         if strategy == "SUPER_SCALP":
-            max_sl_distance = entry_price * 0.01
-            max_tp_distance = entry_price * 0.02
+            max_sl_distance = entry_price * 0.004
+            max_tp_distance = entry_price * 0.008
         elif strategy == "SCALP":
             max_sl_distance = entry_price * 0.02
             max_tp_distance = entry_price * 0.04
@@ -309,8 +309,8 @@ class RiskManager:
         
         if not valid_sl_values or not valid_tp_values:
             if strategy == "SUPER_SCALP":
-                max_sl_distance = entry_price * 0.01
-                max_tp_distance = entry_price * 0.02
+                max_sl_distance = entry_price * 0.004
+                max_tp_distance = entry_price * 0.008
             elif strategy == "SCALP":
                 max_sl_distance = entry_price * 0.02
                 max_tp_distance = entry_price * 0.04
@@ -365,7 +365,7 @@ class RiskManager:
             tp_fixed_forced = self.calculate_sl_tp_fixed_rr(entry_price, sl_final, min_rr_ratio)
             if tp_fixed_forced != 0.0:
                 if (direction == "BUY" and tp_fixed_forced > entry_price) or (direction == "SELL" and tp_fixed_forced < entry_price):
-                    max_tp_for_forced = entry_price * 0.03 if strategy == "SUPER_SCALP" else (entry_price * 0.05 if strategy == "SCALP" else entry_price * 0.15)
+                    max_tp_for_forced = entry_price * 0.008 if strategy == "SUPER_SCALP" else (entry_price * 0.05 if strategy == "SCALP" else entry_price * 0.15)
                     if abs(tp_fixed_forced - entry_price) < max_tp_for_forced:
                         tp_final = tp_fixed_forced
                         logger.debug(f"[SL_TP] Forced TP adjustment to meet min R/R: OldTP={tp_weighted:.5f}, NewTP={tp_final:.5f}, R/R={min_rr_ratio:.2f}")
