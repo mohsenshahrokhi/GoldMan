@@ -44,9 +44,9 @@ class RLEngine:
         }
         
         self.default_trend_weights = {
-            'trend_0': 0.33,
-            'trend_1': 0.33,
-            'trend_2': 0.34
+            'trend_0': 0.5,
+            'trend_1': 0.25,
+            'trend_2': 0.25
         }
         
         self.default_parameters = {

@@ -140,26 +140,31 @@ class StrategyManager:
             if trend == "SIDEWAYS":
                 if idx < sl_tp_timeframe_index:
                     if self.current_strategy == StrategyType.SUPER_SCALP:
-                        if idx == 0:
-                            from ml.rl_engine import RLEngine
-                            rl_engine_temp = RLEngine(self.risk_manager.db)
-                            trend_weights_temp = rl_engine_temp.get_trend_weights(self.current_symbol, self.current_strategy.value)
-                            
-                            current_trend_weight = trend_weights_temp.get('trend_0', 0.33)
-                            other_trends_weight = trend_weights_temp.get('trend_1', 0.33) + trend_weights_temp.get('trend_2', 0.33)
-                            
-                            timeframe_key = f"{tf.value}_{self.current_symbol}"
-                            current_time = time.time()
-                            
-                            if current_trend_weight < 0.2 and other_trends_weight > 0.5:
-                                if timeframe_key not in self._last_sideways_log_time or current_time - self._last_sideways_log_time[timeframe_key] >= 30:
-                                    logger.info(f"[TREND] {tf.value}: {trend} (weight: {current_trend_weight:.2f}) - Low weight, continuing (other trends weight: {other_trends_weight:.2f})")
-                                    self._last_sideways_log_time[timeframe_key] = current_time
-                            else:
-                                if timeframe_key not in self._last_sideways_log_time or current_time - self._last_sideways_log_time[timeframe_key] >= 30:
-                                    logger.info(f"[TREND] {tf.value}: {trend} (weight: {current_trend_weight:.2f}) - Analysis stopped (SIDEWAYS detected before SL/TP timeframe)")
-                                    self._last_sideways_log_time[timeframe_key] = current_time
-                                return None
+                        from ml.rl_engine import RLEngine
+                        rl_engine_temp = RLEngine(self.risk_manager.db)
+                        trend_weights_temp = rl_engine_temp.get_trend_weights(self.current_symbol, self.current_strategy.value)
+                        
+                        current_trend_weight = trend_weights_temp.get(f'trend_{idx}', 0.5 if idx == 0 else 0.25)
+                        
+                        other_weights = []
+                        for other_idx in range(3):
+                            if other_idx != idx:
+                                other_weights.append(trend_weights_temp.get(f'trend_{other_idx}', 0.5 if other_idx == 0 else 0.25))
+                        
+                        sum_other_weights = sum(other_weights)
+                        
+                        timeframe_key = f"{tf.value}_{self.current_symbol}"
+                        current_time = time.time()
+                        
+                        if sum_other_weights > current_trend_weight:
+                            if timeframe_key not in self._last_sideways_log_time or current_time - self._last_sideways_log_time[timeframe_key] >= 30:
+                                logger.info(f"[TREND] {tf.value}: {trend} (weight: {current_trend_weight:.2f}) - Low weight, continuing (other trends weight: {sum_other_weights:.2f})")
+                                self._last_sideways_log_time[timeframe_key] = current_time
+                        else:
+                            if timeframe_key not in self._last_sideways_log_time or current_time - self._last_sideways_log_time[timeframe_key] >= 30:
+                                logger.info(f"[TREND] {tf.value}: {trend} (weight: {current_trend_weight:.2f}) - Analysis stopped (SIDEWAYS detected before SL/TP timeframe)")
+                                self._last_sideways_log_time[timeframe_key] = current_time
+                            return None
                     else:
                         return None
             
@@ -212,10 +217,10 @@ class StrategyManager:
         entry_weights = rl_engine.get_entry_weights(self.current_symbol, self.current_strategy.value)
         trend_weights = rl_engine.get_trend_weights(self.current_symbol, self.current_strategy.value)
         
-        timeframe_weights = []
-        for i in range(4):
-            trend_key = f'trend_{i}' if i < 3 else 'trend_2'
-            trend_weight = trend_weights.get(trend_key, 0.33)
+        trend_weights_list = []
+        for i in range(3):
+            trend_key = f'trend_{i}'
+            trend_weight = trend_weights.get(trend_key, 0.5 if i == 0 else 0.25)
             
             if self.current_strategy == StrategyType.SUPER_SCALP and i < len(trend_strengths):
                 trend_strength = trend_strengths[i]
@@ -229,32 +234,61 @@ class StrategyManager:
             else:
                 final_weight = trend_weight
             
-            timeframe_weights.append(final_weight)
+            trend_weights_list.append(final_weight)
         
-        max_weight = max(timeframe_weights) if timeframe_weights else 0.0
-        weight_threshold = 0.2
+        timeframe_weights = []
+        for i in range(4):
+            if i < 3:
+                timeframe_weights.append(trend_weights_list[i])
+            else:
+                timeframe_weights.append(trend_weights_list[2])
+        
+        weight_0 = trend_weights_list[0]
+        weight_1 = trend_weights_list[1]
+        weight_2 = trend_weights_list[2]
+        
+        sum_1_2 = weight_1 + weight_2
+        sum_0_1 = weight_0 + weight_1
+        sum_0_2 = weight_0 + weight_2
         
         selected_entries = []
         selected_weights = []
         
-        if max_weight > 0.5:
-            max_index = timeframe_weights.index(max_weight)
-            selected_entries = [entry_points[max_index]]
+        if weight_0 > sum_1_2:
+            selected_entries = [entry_points[0]]
+            selected_weights = [weight_0]
             if self.current_strategy == StrategyType.SUPER_SCALP:
-                logger.info(f"[ENTRY] Single timeframe selected (weight: {max_weight:.2f}): {timeframes[max_index].value} @ {entry_points[max_index]:.5f}")
+                logger.info(f"[ENTRY] Single timeframe selected (weight: {weight_0:.2f} > {sum_1_2:.2f}): {timeframes[0].value} @ {entry_points[0]:.5f}")
+        elif weight_1 > (weight_0 + weight_2):
+            selected_entries = [entry_points[1]]
+            selected_weights = [weight_1]
+            if self.current_strategy == StrategyType.SUPER_SCALP:
+                logger.info(f"[ENTRY] Single timeframe selected (weight: {weight_1:.2f} > {weight_0 + weight_2:.2f}): {timeframes[1].value} @ {entry_points[1]:.5f}")
+        elif weight_2 > (weight_0 + weight_1):
+            selected_entries = [entry_points[2], entry_points[3]]
+            selected_weights = [weight_2, weight_2]
+            if self.current_strategy == StrategyType.SUPER_SCALP:
+                logger.info(f"[ENTRY] Single timeframe selected (weight: {weight_2:.2f} > {weight_0 + weight_1:.2f}): {timeframes[2].value} @ {entry_points[2]:.5f}")
+        elif sum_1_2 > weight_0:
+            selected_entries = [entry_points[1], entry_points[2], entry_points[3]]
+            selected_weights = [weight_1, weight_2, weight_2]
+            if self.current_strategy == StrategyType.SUPER_SCALP:
+                logger.info(f"[ENTRY] Two timeframes selected (combined weight: {sum_1_2:.2f} > {weight_0:.2f}): {timeframes[1].value} + {timeframes[2].value}")
+        elif sum_0_1 > weight_2:
+            selected_entries = [entry_points[0], entry_points[1]]
+            selected_weights = [weight_0, weight_1]
+            if self.current_strategy == StrategyType.SUPER_SCALP:
+                logger.info(f"[ENTRY] Two timeframes selected (combined weight: {sum_0_1:.2f} > {weight_2:.2f}): {timeframes[0].value} + {timeframes[1].value}")
+        elif sum_0_2 > weight_1:
+            selected_entries = [entry_points[0], entry_points[2], entry_points[3]]
+            selected_weights = [weight_0, weight_2, weight_2]
+            if self.current_strategy == StrategyType.SUPER_SCALP:
+                logger.info(f"[ENTRY] Two timeframes selected (combined weight: {sum_0_2:.2f} > {weight_1:.2f}): {timeframes[0].value} + {timeframes[2].value}")
         else:
-            for i in range(4):
-                if timeframe_weights[i] >= weight_threshold:
-                    selected_entries.append(entry_points[i])
-                    selected_weights.append(timeframe_weights[i])
-                    if self.current_strategy == StrategyType.SUPER_SCALP:
-                        logger.info(f"[ENTRY] Timeframe {timeframes[i].value} selected (weight: {timeframe_weights[i]:.2f})")
-        
-        if not selected_entries:
-            if self.current_strategy == StrategyType.SUPER_SCALP:
-                logger.debug("[ENTRY] No timeframes with sufficient weight found, using all entry points")
             selected_entries = entry_points
             selected_weights = timeframe_weights
+            if self.current_strategy == StrategyType.SUPER_SCALP:
+                logger.info(f"[ENTRY] All timeframes selected (equal weights): Average of all entry points")
         
         if len(selected_entries) == 1:
             final_entry = selected_entries[0]
@@ -267,6 +301,8 @@ class StrategyManager:
                 else:
                     weighted_entries = np.array([normalized_weights[i] * selected_entries[i] for i in range(len(selected_entries))])
                     final_entry = np.sum(weighted_entries)
+            else:
+                final_entry = sum(entry_points) / len(entry_points) if entry_points else 0.0
             else:
                 if np is None:
                     final_entry = sum(selected_entries) / len(selected_entries)
