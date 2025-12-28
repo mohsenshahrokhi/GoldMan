@@ -197,6 +197,27 @@ class RLEngine:
     def save_trend_weights(self, symbol: str, strategy: str, weights: Dict[str, float]):
         self.db.save_rl_trend_weights(symbol, strategy, weights)
     
+    def get_trend_strength(self, symbol: str, strategy: str, timeframe: str) -> float:
+        strength = self.db.get_rl_trend_strength(symbol, strategy, timeframe)
+        return strength if strength > 0 else 0.0
+    
+    def save_trend_strength(self, symbol: str, strategy: str, timeframe: str, strength: float):
+        self.db.save_rl_trend_strength(symbol, strategy, timeframe, strength)
+    
+    def optimize_trend_strength(self, symbol: str, strategy: str, timeframe: str, actual_strength: float, reward: float):
+        self._update_learning_rate(symbol, strategy)
+        
+        current_strength = self.get_trend_strength(symbol, strategy, timeframe)
+        
+        if reward > 0:
+            new_strength = current_strength + self.learning_rate * (actual_strength - current_strength)
+        else:
+            new_strength = current_strength - self.learning_rate * (actual_strength - current_strength) * 0.5
+        
+        new_strength = max(0.0, min(100.0, new_strength))
+        
+        self.save_trend_strength(symbol, strategy, timeframe, new_strength)
+    
     def _get_experience_buffer_key(self, symbol: str, strategy: str) -> str:
         return f"{symbol}_{strategy}"
     

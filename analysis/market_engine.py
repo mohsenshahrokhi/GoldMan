@@ -63,6 +63,27 @@ class MarketEngine:
         else:
             return "DOWN"
     
+    def detect_trend_with_strength(self, df: pd.DataFrame, period: int = 20) -> Tuple[str, float]:
+        if stats is None or np is None:
+            return "SIDEWAYS", 0.0
+            
+        if len(df) < period:
+            return "SIDEWAYS", 0.0
+        
+        prices = df['close'].tail(period).values
+        
+        x = np.arange(len(prices))
+        slope, intercept, r_value, p_value, std_err = stats.linregress(x, prices)
+        
+        trend_strength = abs(r_value) * 100
+        
+        if abs(r_value) < 0.5:
+            return "SIDEWAYS", trend_strength
+        elif slope > 0:
+            return "UP", trend_strength
+        else:
+            return "DOWN", trend_strength
+    
     def calculate_rally_correction(self, df: pd.DataFrame) -> Tuple[float, float]:
         if np is None:
             return 0.0, 0.0

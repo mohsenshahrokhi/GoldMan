@@ -99,6 +99,18 @@ class DatabaseManager:
             """)
             
             cursor.execute("""
+                CREATE TABLE IF NOT EXISTS rl_trend_strength (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    symbol TEXT,
+                    strategy TEXT,
+                    timeframe TEXT,
+                    strength REAL,
+                    updated_at DATETIME,
+                    UNIQUE(symbol, strategy, timeframe)
+                )
+            """)
+            
+            cursor.execute("""
                 CREATE TABLE IF NOT EXISTS market_parameters (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
                     symbol TEXT,
@@ -457,6 +469,42 @@ class DatabaseManager:
             return False
         except Exception as e:
             logger.error(f"Unexpected error saving RL trend weights for {symbol}-{strategy}: {e}")
+            return False
+    
+    def get_rl_trend_strength(self, symbol: str, strategy: str, timeframe: str) -> float:
+        try:
+            with self.get_cursor() as cursor:
+                cursor.execute("""
+                    SELECT strength
+                    FROM rl_trend_strength
+                    WHERE symbol = ? AND strategy = ? AND timeframe = ?
+                """, (symbol, strategy, timeframe))
+                row = cursor.fetchone()
+                return row['strength'] if row else 0.0
+        except sqlite3.Error as e:
+            logger.error(f"Error getting RL trend strength for {symbol}-{strategy}-{timeframe}: {e}")
+            return 0.0
+        except Exception as e:
+            logger.error(f"Unexpected error getting RL trend strength for {symbol}-{strategy}-{timeframe}: {e}")
+            return 0.0
+    
+    def save_rl_trend_strength(self, symbol: str, strategy: str, timeframe: str, strength: float) -> bool:
+        try:
+            with self.get_cursor() as cursor:
+                now = datetime.now()
+                cursor.execute("""
+                    INSERT OR REPLACE INTO rl_trend_strength
+                    (symbol, strategy, timeframe, strength, updated_at)
+                    VALUES (?, ?, ?, ?, ?)
+                """, (symbol, strategy, timeframe, strength, now))
+                self.conn.commit()
+                return True
+        except sqlite3.Error as e:
+            logger.error(f"Error saving RL trend strength for {symbol}-{strategy}-{timeframe}: {e}")
+            self.conn.rollback()
+            return False
+        except Exception as e:
+            logger.error(f"Unexpected error saving RL trend strength for {symbol}-{strategy}-{timeframe}: {e}")
             return False
     
     def close(self):

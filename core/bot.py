@@ -273,7 +273,9 @@ class GoldManTradingBot:
                             'trend': 'UP' if signal.direction == 'BUY' else 'DOWN',
                             'entry_price': signal.entry_price,
                             'entry_points': signal.entry_points if hasattr(signal, 'entry_points') else [],
-                            'trends': getattr(signal, 'trends', [])
+                            'trends': getattr(signal, 'trends', []),
+                            'timeframes': getattr(signal, 'timeframes', []),
+                            'trend_strengths': getattr(signal, 'trend_strengths', []) if hasattr(signal, 'trend_strengths') else []
                         }
                         action = {
                             'method': 'node',
@@ -353,6 +355,41 @@ class GoldManTradingBot:
                                     'profit': total_profit
                                 }):
                                     logger.warning(f"Failed to update trade {ticket} in database after monitoring detected closure")
+                                
+                                if self.current_strategy == StrategyType.SUPER_SCALP and order_data:
+                                    import json
+                                    cursor.execute("""
+                                        SELECT state, timeframe FROM rl_experiences 
+                                        WHERE trade_id = ? AND symbol = ? AND strategy = ?
+                                        ORDER BY timestamp DESC LIMIT 1
+                                    """, (ticket, order_data['symbol'], self.current_strategy.value))
+                                    exp_data = cursor.fetchone()
+                                    if exp_data:
+                                        try:
+                                            state = json.loads(exp_data['state'])
+                                            timeframe = exp_data['timeframe']
+                                            if 'trend_strengths' in state and state['trend_strengths']:
+                                                timeframes_list = state.get('timeframes', [])
+                                                if timeframes_list and len(state['trend_strengths']) == len(timeframes_list):
+                                                    reward = self.rl_engine.calculate_reward(
+                                                        order_profit=total_profit,
+                                                        transaction_cost=abs(total_profit) * 0.001,
+                                                        risk_penalty=0.0,
+                                                        rr_ratio=1.0,
+                                                        hold_time=0.0
+                                                    )
+                                                    for i, tf_name in enumerate(timeframes_list[:3]):
+                                                        if i < len(state['trend_strengths']):
+                                                            actual_strength = state['trend_strengths'][i]
+                                                            self.rl_engine.optimize_trend_strength(
+                                                                symbol=order_data['symbol'],
+                                                                strategy=self.current_strategy.value,
+                                                                timeframe=tf_name,
+                                                                actual_strength=actual_strength,
+                                                                reward=reward
+                                                            )
+                                        except Exception as e:
+                                            logger.error(f"Error optimizing trend strength for ticket {ticket}: {e}")
                                 
                                 if self.telegram_bot and order_data:
                                     profit_emoji = "✅" if total_profit > 0 else "❌"

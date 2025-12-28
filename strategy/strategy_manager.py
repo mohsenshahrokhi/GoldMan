@@ -75,6 +75,7 @@ class StrategyManager:
         timeframes = self.strategy_timeframes[self.current_strategy]
         entry_points = []
         trends = []
+        trend_strengths = []
         trend_details = {}
         
         sl_tp_timeframe = None
@@ -118,7 +119,11 @@ class StrategyManager:
             if not should_analyze:
                 continue
             
-            trend = self.market_engine.detect_trend(df)
+            if self.current_strategy == StrategyType.SUPER_SCALP:
+                trend, trend_strength = self.market_engine.detect_trend_with_strength(df)
+            else:
+                trend = self.market_engine.detect_trend(df)
+                trend_strength = 0.0
             
             if self.current_strategy == StrategyType.SUPER_SCALP:
                 should_log_trend = True
@@ -145,8 +150,18 @@ class StrategyManager:
                     else:
                         return None
             
-            if self.current_strategy == StrategyType.SUPER_SCALP and idx < 3:
-                logger.info(f"[TREND] {tf.value}: {trend}")
+            if self.current_strategy == StrategyType.SUPER_SCALP:
+                trend_strengths.append(trend_strength)
+                if idx < 3:
+                    from ml.rl_engine import RLEngine
+                    rl_engine_temp = RLEngine(self.risk_manager.db)
+                    learned_strength = rl_engine_temp.get_trend_strength(self.current_symbol, self.current_strategy.value, tf.value)
+                    if learned_strength > 0:
+                        logger.info(f"[TREND] {tf.value}: {trend} ({learned_strength:.1f}%)")
+                    else:
+                        logger.info(f"[TREND] {tf.value}: {trend} ({trend_strength:.1f}%)")
+            else:
+                trend_strengths.append(0.0)
             
             trends.append(trend)
             
