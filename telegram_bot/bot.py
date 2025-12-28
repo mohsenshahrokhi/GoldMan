@@ -42,6 +42,16 @@ class TelegramBot:
         self.selection_timer = None
         self.event_loop = None
         self.chat_ids = set()
+        
+        import os
+        channel_chat_id = os.getenv('TELEGRAM_CHAT_ID')
+        if channel_chat_id:
+            try:
+                self.chat_ids.add(int(channel_chat_id))
+                logger.info(f"Channel chat_id loaded from environment: {channel_chat_id}")
+            except ValueError:
+                logger.warning(f"Invalid TELEGRAM_CHAT_ID format: {channel_chat_id}")
+        
         logger.info("TelegramBot initialized successfully")
     
     async def start(self):

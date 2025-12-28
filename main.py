@@ -33,6 +33,13 @@ def create_env_file_if_not_exists():
 # Example: TELEGRAM_BOT_TOKEN=1234567890:ABCdefGHIjklMNOpqrsTUVwxyz
 TELEGRAM_BOT_TOKEN=
 
+# Telegram Channel/Chat ID (Optional)
+# Get chat_id by sending /get_chat_id command to your bot
+# For channels: Add bot as admin, then send /get_chat_id in the channel
+# Format: -1001234567890 (negative number for channels/groups)
+# Example: TELEGRAM_CHAT_ID=-1001234567890
+TELEGRAM_CHAT_ID=
+
 # MetaTrader 5 Configuration
 # Your MT5 account login number
 MT5_LOGIN=
