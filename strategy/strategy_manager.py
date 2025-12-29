@@ -172,18 +172,21 @@ class StrategyManager:
                         return None
             
             if self.current_strategy == StrategyType.SUPER_SCALP:
-                trend_strengths.append(trend_strength)
                 if idx < 3:
+                    trend_strengths.append(trend_strength)
                     from ml.rl_engine import RLEngine
                     rl_engine_temp = RLEngine(self.risk_manager.db)
                     trend_weights_temp = rl_engine_temp.get_trend_weights(self.current_symbol, self.current_strategy.value)
                     trend_key = f'trend_{idx}'
-                    trend_weight = trend_weights_temp.get(trend_key, 0.5 if idx == 0 else 0.25)
+                    trend_weight = trend_weights_temp.get(trend_key, 0.4 if idx == 0 else (0.3 if idx == 1 else 0.2))
                     logger.info(f"[TREND] {tf.value}: {trend} (weight: {trend_weight:.2f})")
+                    trends.append(trend)
+                else:
+                    trend_strengths.append(0.0)
+                    trends.append(None)
             else:
                 trend_strengths.append(0.0)
-            
-            trends.append(trend)
+                trends.append(trend)
             
             entry_point = self.market_engine.find_entry_point(df, trend, tf)
             
@@ -232,24 +235,31 @@ class StrategyManager:
         entry_weights = rl_engine.get_entry_weights(self.current_symbol, self.current_strategy.value)
         trend_weights = rl_engine.get_trend_weights(self.current_symbol, self.current_strategy.value)
         
-        trend_weights_list = []
-        for i in range(3):
-            trend_key = f'trend_{i}'
-            trend_weight = trend_weights.get(trend_key, 0.5 if i == 0 else 0.25)
-            
-            if self.current_strategy == StrategyType.SUPER_SCALP and i < len(trend_strengths):
-                trend_strength = trend_strengths[i]
-                learned_strength = rl_engine.get_trend_strength(self.current_symbol, self.current_strategy.value, timeframes[i].value)
-                if learned_strength > 0:
-                    strength_factor = learned_strength / 100.0
-                else:
-                    strength_factor = trend_strength / 100.0 if trend_strength > 0 else 0.5
+        if self.current_strategy == StrategyType.SUPER_SCALP:
+            trend_weights_list = []
+            for i in range(3):
+                trend_key = f'trend_{i}'
+                trend_weight = trend_weights.get(trend_key, 0.4 if i == 0 else (0.3 if i == 1 else 0.2))
                 
-                final_weight = trend_weight * strength_factor
-            else:
-                final_weight = trend_weight
-            
-            trend_weights_list.append(final_weight)
+                if i < len(trend_strengths):
+                    trend_strength = trend_strengths[i]
+                    learned_strength = rl_engine.get_trend_strength(self.current_symbol, self.current_strategy.value, timeframes[i].value)
+                    if learned_strength > 0:
+                        strength_factor = learned_strength / 100.0
+                    else:
+                        strength_factor = trend_strength / 100.0 if trend_strength > 0 else 0.5
+                    
+                    final_weight = trend_weight * strength_factor
+                else:
+                    final_weight = trend_weight
+                
+                trend_weights_list.append(final_weight)
+        else:
+            trend_weights_list = []
+            for i in range(3):
+                trend_key = f'trend_{i}'
+                trend_weight = trend_weights.get(trend_key, 0.5 if i == 0 else 0.25)
+                trend_weights_list.append(trend_weight)
         
         timeframe_weights = []
         for i in range(4):
@@ -262,62 +272,99 @@ class StrategyManager:
         weight_1 = trend_weights_list[1]
         weight_2 = trend_weights_list[2]
         
-        sum_1_2 = weight_1 + weight_2
-        sum_0_1 = weight_0 + weight_1
-        sum_0_2 = weight_0 + weight_2
-        
-        selected_entries = []
-        selected_weights = []
-        
-        if weight_0 > sum_1_2:
-            selected_entries = [entry_points[0]]
-            selected_weights = [weight_0]
-            if self.current_strategy == StrategyType.SUPER_SCALP:
+        if self.current_strategy == StrategyType.SUPER_SCALP:
+            selected_entries = []
+            selected_weights = []
+            
+            sum_1_2 = weight_1 + weight_2
+            sum_0_1 = weight_0 + weight_1
+            sum_0_2 = weight_0 + weight_2
+            
+            if weight_0 > sum_1_2:
+                selected_entries = [entry_points[0]]
+                selected_weights = [weight_0]
                 logger.info(f"[ENTRY] Single timeframe selected (weight: {weight_0:.2f} > {sum_1_2:.2f}): {timeframes[0].value} @ {entry_points[0]:.5f}")
-        elif weight_1 > (weight_0 + weight_2):
-            selected_entries = [entry_points[1]]
-            selected_weights = [weight_1]
-            if self.current_strategy == StrategyType.SUPER_SCALP:
+            elif weight_1 > (weight_0 + weight_2):
+                selected_entries = [entry_points[1]]
+                selected_weights = [weight_1]
                 logger.info(f"[ENTRY] Single timeframe selected (weight: {weight_1:.2f} > {weight_0 + weight_2:.2f}): {timeframes[1].value} @ {entry_points[1]:.5f}")
-        elif weight_2 > (weight_0 + weight_1):
-            selected_entries = [entry_points[2], entry_points[3]]
-            selected_weights = [weight_2, weight_2]
-            if self.current_strategy == StrategyType.SUPER_SCALP:
+            elif weight_2 > (weight_0 + weight_1):
+                selected_entries = [entry_points[2], entry_points[3]]
+                selected_weights = [weight_2, weight_2]
                 logger.info(f"[ENTRY] Single timeframe selected (weight: {weight_2:.2f} > {weight_0 + weight_1:.2f}): {timeframes[2].value} @ {entry_points[2]:.5f}")
-        elif sum_1_2 > weight_0:
-            selected_entries = [entry_points[1], entry_points[2], entry_points[3]]
-            selected_weights = [weight_1, weight_2, weight_2]
-            if self.current_strategy == StrategyType.SUPER_SCALP:
+            elif sum_1_2 > weight_0:
+                selected_entries = [entry_points[1], entry_points[2], entry_points[3]]
+                selected_weights = [weight_1, weight_2, weight_2]
                 logger.info(f"[ENTRY] Two timeframes selected (combined weight: {sum_1_2:.2f} > {weight_0:.2f}): {timeframes[1].value} + {timeframes[2].value}")
-        elif sum_0_1 > weight_2:
-            selected_entries = [entry_points[0], entry_points[1]]
-            selected_weights = [weight_0, weight_1]
-            if self.current_strategy == StrategyType.SUPER_SCALP:
+            elif sum_0_1 > weight_2:
+                selected_entries = [entry_points[0], entry_points[1]]
+                selected_weights = [weight_0, weight_1]
                 logger.info(f"[ENTRY] Two timeframes selected (combined weight: {sum_0_1:.2f} > {weight_2:.2f}): {timeframes[0].value} + {timeframes[1].value}")
-        elif sum_0_2 > weight_1:
-            selected_entries = [entry_points[0], entry_points[2], entry_points[3]]
-            selected_weights = [weight_0, weight_2, weight_2]
-            if self.current_strategy == StrategyType.SUPER_SCALP:
+            elif sum_0_2 > weight_1:
+                selected_entries = [entry_points[0], entry_points[2], entry_points[3]]
+                selected_weights = [weight_0, weight_2, weight_2]
                 logger.info(f"[ENTRY] Two timeframes selected (combined weight: {sum_0_2:.2f} > {weight_1:.2f}): {timeframes[0].value} + {timeframes[2].value}")
-        else:
-            selected_entries = entry_points
-            selected_weights = timeframe_weights
-            if self.current_strategy == StrategyType.SUPER_SCALP:
-                logger.info(f"[ENTRY] All timeframes selected (equal weights): Average of all entry points")
-        
-        if len(selected_entries) == 1:
-            final_entry = selected_entries[0]
-        else:
-            if selected_weights and sum(selected_weights) > 0:
-                total_weight = sum(selected_weights)
-                normalized_weights = [w / total_weight for w in selected_weights]
-                if np is None:
-                    final_entry = sum(normalized_weights[i] * selected_entries[i] for i in range(len(selected_entries)))
-                else:
-                    weighted_entries = np.array([normalized_weights[i] * selected_entries[i] for i in range(len(selected_entries))])
-                    final_entry = np.sum(weighted_entries)
             else:
-                final_entry = sum(entry_points) / len(entry_points) if entry_points else 0.0
+                selected_entries = entry_points
+                selected_weights = timeframe_weights
+                logger.info(f"[ENTRY] All timeframes selected (equal weights): Average of all entry points")
+            
+            if len(selected_entries) == 1:
+                final_entry = selected_entries[0]
+            else:
+                if selected_weights and sum(selected_weights) > 0:
+                    total_weight = sum(selected_weights)
+                    normalized_weights = [w / total_weight for w in selected_weights]
+                    if np is None:
+                        final_entry = sum(normalized_weights[i] * selected_entries[i] for i in range(len(selected_entries)))
+                    else:
+                        weighted_entries = np.array([normalized_weights[i] * selected_entries[i] for i in range(len(selected_entries))])
+                        final_entry = np.sum(weighted_entries)
+                else:
+                    final_entry = sum(entry_points) / len(entry_points) if entry_points else 0.0
+        else:
+            sum_1_2 = weight_1 + weight_2
+            sum_0_1 = weight_0 + weight_1
+            sum_0_2 = weight_0 + weight_2
+            
+            selected_entries = []
+            selected_weights = []
+            
+            if weight_0 > sum_1_2:
+                selected_entries = [entry_points[0]]
+                selected_weights = [weight_0]
+            elif weight_1 > (weight_0 + weight_2):
+                selected_entries = [entry_points[1]]
+                selected_weights = [weight_1]
+            elif weight_2 > (weight_0 + weight_1):
+                selected_entries = [entry_points[2], entry_points[3]]
+                selected_weights = [weight_2, weight_2]
+            elif sum_1_2 > weight_0:
+                selected_entries = [entry_points[1], entry_points[2], entry_points[3]]
+                selected_weights = [weight_1, weight_2, weight_2]
+            elif sum_0_1 > weight_2:
+                selected_entries = [entry_points[0], entry_points[1]]
+                selected_weights = [weight_0, weight_1]
+            elif sum_0_2 > weight_1:
+                selected_entries = [entry_points[0], entry_points[2], entry_points[3]]
+                selected_weights = [weight_0, weight_2, weight_2]
+            else:
+                selected_entries = entry_points
+                selected_weights = timeframe_weights
+            
+            if len(selected_entries) == 1:
+                final_entry = selected_entries[0]
+            else:
+                if selected_weights and sum(selected_weights) > 0:
+                    total_weight = sum(selected_weights)
+                    normalized_weights = [w / total_weight for w in selected_weights]
+                    if np is None:
+                        final_entry = sum(normalized_weights[i] * selected_entries[i] for i in range(len(selected_entries)))
+                    else:
+                        weighted_entries = np.array([normalized_weights[i] * selected_entries[i] for i in range(len(selected_entries))])
+                        final_entry = np.sum(weighted_entries)
+                else:
+                    final_entry = sum(entry_points) / len(entry_points) if entry_points else 0.0
         
         trend_scores = {
             'UP': 0.0,
@@ -326,13 +373,14 @@ class StrategyManager:
         }
         
         for i in range(min(3, len(trends))):
-            trend_key = f'trend_{i}'
-            weight = trend_weights.get(trend_key, 0.5 if i == 0 else 0.25)
-            trend = trends[i]
-            if trend in trend_scores:
-                trend_scores[trend] += weight
-            if self.current_strategy == StrategyType.SUPER_SCALP:
-                logger.info(f"[TREND_SCORE] {timeframes[i].value}: {trend} (weight: {weight:.2f}) -> {trend_scores[trend]:.2f}")
+            if trends[i] is not None:
+                trend_key = f'trend_{i}'
+                weight = trend_weights.get(trend_key, 0.4 if i == 0 else (0.3 if i == 1 else 0.2))
+                trend = trends[i]
+                if trend in trend_scores:
+                    trend_scores[trend] += weight
+                if self.current_strategy == StrategyType.SUPER_SCALP:
+                    logger.info(f"[TREND_SCORE] {timeframes[i].value}: {trend} (weight: {weight:.2f}) -> {trend_scores[trend]:.2f}")
         
         dominant_trend = max(trend_scores, key=trend_scores.get)
         
@@ -343,6 +391,46 @@ class StrategyManager:
             if self.current_strategy == StrategyType.SUPER_SCALP:
                 logger.info(f"[ENTRY] Rejected - Dominant trend is SIDEWAYS (scores: {trend_scores})")
             return None
+        
+        if self.current_strategy == StrategyType.SUPER_SCALP:
+            trend_0 = trends[0] if len(trends) > 0 and trends[0] is not None else None
+            trend_1 = trends[1] if len(trends) > 1 and trends[1] is not None else None
+            trend_2 = trends[2] if len(trends) > 2 and trends[2] is not None else None
+            
+            weight_0 = trend_weights_list[0]
+            weight_1 = trend_weights_list[1]
+            weight_2 = trend_weights_list[2]
+            
+            compatible_pairs = []
+            if trend_0 and trend_1 and trend_0 == trend_1 and trend_0 != "SIDEWAYS":
+                combined_weight = weight_0 + weight_1
+                if combined_weight >= 0.7:
+                    compatible_pairs.append((0, 1, combined_weight, trend_0))
+            if trend_0 and trend_2 and trend_0 == trend_2 and trend_0 != "SIDEWAYS":
+                combined_weight = weight_0 + weight_2
+                if combined_weight >= 0.7:
+                    compatible_pairs.append((0, 2, combined_weight, trend_0))
+            if trend_1 and trend_2 and trend_1 == trend_2 and trend_1 != "SIDEWAYS":
+                combined_weight = weight_1 + weight_2
+                if combined_weight >= 0.7:
+                    compatible_pairs.append((1, 2, combined_weight, trend_1))
+            
+            if not compatible_pairs:
+                logger.info(f"[ENTRY] Rejected - No compatible trend pairs with combined weight >= 70%")
+                logger.info(f"  Trend 0 (M5): {trend_0} (weight: {weight_0:.2f})")
+                logger.info(f"  Trend 1 (M3): {trend_1} (weight: {weight_1:.2f})")
+                logger.info(f"  Trend 2 (M1): {trend_2} (weight: {weight_2:.2f})")
+                return None
+            
+            best_pair = max(compatible_pairs, key=lambda x: x[2])
+            selected_tf_indices = [best_pair[0], best_pair[1], 3]
+            selected_entry_points = [entry_points[i] for i in selected_tf_indices]
+            
+            final_entry = sum(selected_entry_points) / len(selected_entry_points)
+            logger.info(f"[ENTRY] Selected timeframes: {timeframes[best_pair[0]].value} + {timeframes[best_pair[1]].value} + {timeframes[3].value} (combined weight: {best_pair[2]:.2f}, trend: {best_pair[3]})")
+            logger.info(f"[ENTRY] Entry points: {[f'{ep:.5f}' for ep in selected_entry_points]}, Final entry: {final_entry:.5f}")
+            
+            direction = "BUY" if best_pair[3] == "UP" else "SELL"
         
         direction = "BUY" if dominant_trend == "UP" else "SELL"
         

@@ -30,23 +30,30 @@ class RLEngine:
         }
         
         self.default_weights_super_scalp = {
-            'node': 0.95,
-            'atr': 0.0167,
-            'garch': 0.0167,
-            'fixed_rr': 0.0166
+            'node': 1.0,
+            'atr': 0.0,
+            'garch': 0.0,
+            'fixed_rr': 0.0
         }
         
         self.default_entry_weights = {
-            'entry_0': 0.25,
-            'entry_1': 0.25,
-            'entry_2': 0.25,
-            'entry_3': 0.25
+            'entry_0': 0.4,
+            'entry_1': 0.3,
+            'entry_2': 0.2,
+            'entry_3': 0.1
         }
         
         self.default_trend_weights = {
-            'trend_0': 0.5,
-            'trend_1': 0.25,
-            'trend_2': 0.25
+            'trend_0': 0.4,
+            'trend_1': 0.3,
+            'trend_2': 0.2
+        }
+        
+        self.default_entry_weights = {
+            'entry_0': 0.4,
+            'entry_1': 0.3,
+            'entry_2': 0.2,
+            'entry_3': 0.1
         }
         
         self.default_parameters = {
