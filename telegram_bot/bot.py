@@ -215,7 +215,7 @@ class TelegramBot:
     async def default_strategy_selection(self, update: 'Update'):
         """انتخاب استراتژی پیش‌فرض در صورت عدم انتخاب"""
         if not self.selected_strategy:
-            self.selected_strategy = StrategyType.DAY_TRADING
+            self.selected_strategy = StrategyType.SUPER_SCALP
             await update.message.reply_text(
                 f"✅ استراتژی: {self.selected_strategy.value} (پیش‌فرض)\n\n"
                 "در حال نمایش منوی انتخاب نماد..."

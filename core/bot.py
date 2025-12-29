@@ -59,6 +59,7 @@ class GoldManTradingBot:
         self.last_activity_log_time = None
         self.last_activity_time = None
         self.max_profit_tracker = {}  # Track max profit for each open position
+        self.open_orders_max_profit = {}  # Track max profit for each open order
     
     async def initialize(self):
         logger.info("Starting bot initialization...")
@@ -105,10 +106,20 @@ class GoldManTradingBot:
         self.strategy_manager.set_strategy(strategy, symbol_name)
         logger.info(f"[SENSITIVE] Strategy changed: Symbol={symbol_name}, OldStrategy={old_strategy}, NewStrategy={strategy.value}")
         
+        all_positions = self.order_executor.get_open_positions()
+        if all_positions:
+            logger.info(f"Found {len(all_positions)} existing open position(s). Initializing management...")
+            for pos in all_positions:
+                if pos.ticket not in self.order_executor.original_sl_tp:
+                    self.order_executor.original_sl_tp[pos.ticket] = {
+                        'sl': pos.sl,
+                        'tp': pos.tp
+                    }
+                    logger.info(f"[SENSITIVE] Initialized SL/TP protection for existing position: Ticket={pos.ticket}, Symbol={pos.symbol}, SL={pos.sl:.5f}, TP={pos.tp:.5f}")
+        
         if self.order_executor.has_open_position(symbol_name):
-            logger.info("Open position exists. Managing position...")
-            positions = self.order_executor.get_open_positions()
-            for pos in positions:
+            logger.info("Open position exists for current symbol. Managing position...")
+            for pos in all_positions:
                 if pos.symbol == symbol_name:
                     self.order_executor.current_position = pos.ticket
                     break
@@ -152,16 +163,45 @@ class GoldManTradingBot:
                     continue
                 
                 symbol_name = self.symbol_mgr.get_symbol_name(self.current_symbol)
-                if self.order_executor.has_open_position(symbol_name):
-                    if self.order_executor.current_position:
-                        self.order_executor.manage_position(
-                            self.order_executor.current_position,
-                            self.strategy_manager,
-                            self.risk_manager,
-                            self.market_engine
-                        )
-                    await asyncio.sleep(1)
-                    continue
+                all_positions = self.order_executor.get_open_positions()
+                
+                if all_positions:
+                    managed_any = False
+                    for position in all_positions:
+                        if position.symbol == symbol_name:
+                            try:
+                                if self.current_strategy == StrategyType.SUPER_SCALP:
+                                    logger.info(f"[MAIN_LOOP] Managing position: Ticket={position.ticket}, Symbol={position.symbol}, Type={'BUY' if position.type == mt5.ORDER_TYPE_BUY else 'SELL'}, Entry={position.price_open:.5f}, Current={position.price_current:.5f}")
+                                    result = self.order_executor.manage_position(
+                                        position.ticket,
+                                        self.strategy_manager,
+                                        self.risk_manager,
+                                        self.market_engine
+                                    )
+                                    if result:
+                                        managed_any = True
+                                        logger.info(f"[MAIN_LOOP] Position {position.ticket} managed successfully")
+                                    else:
+                                        logger.warning(f"[MAIN_LOOP] Position {position.ticket} management returned False")
+                                elif position.ticket == self.order_executor.current_position:
+                                    result = self.order_executor.manage_position(
+                                        position.ticket,
+                                        self.strategy_manager,
+                                        self.risk_manager,
+                                        self.market_engine
+                                    )
+                                    if result:
+                                        managed_any = True
+                            except Exception as e:
+                                logger.error(f"Error managing position {position.ticket} in main loop: {e}", exc_info=True)
+                    
+                    if managed_any or all_positions:
+                        await asyncio.sleep(1)
+                        continue
+                    else:
+                        logger.warning(f"[MAIN_LOOP] No positions managed. All positions: {[(p.ticket, p.symbol) for p in all_positions]}, Current symbol: {symbol_name}, Strategy: {self.current_strategy}")
+                        await asyncio.sleep(1)
+                        continue
                 
                 if self.current_strategy == StrategyType.SUPER_SCALP:
                     if mt5 is None:
@@ -218,9 +258,13 @@ class GoldManTradingBot:
                     
                     drawdown_ok, volume_multiplier = self.risk_manager.check_drawdown()
                     if not drawdown_ok:
-                        logger.warning(f"[SENSITIVE] Drawdown protection triggered - Trading stopped: Balance={account_info.balance:.2f}, Equity={account_info.equity:.2f}, Drawdown={self.risk_manager.max_drawdown*100:.2f}%")
-                        await asyncio.sleep(60)
-                        continue
+                        if self.current_strategy == StrategyType.SUPER_SCALP:
+                            logger.warning(f"[SENSITIVE] Drawdown protection triggered but Super Scalp continues: Balance={account_info.balance:.2f}, Equity={account_info.equity:.2f}, Drawdown={self.risk_manager.max_drawdown*100:.2f}%")
+                            volume_multiplier = 0.3
+                        else:
+                            logger.warning(f"[SENSITIVE] Drawdown protection triggered - Trading stopped: Balance={account_info.balance:.2f}, Equity={account_info.equity:.2f}, Drawdown={self.risk_manager.max_drawdown*100:.2f}%")
+                            await asyncio.sleep(60)
+                            continue
                     
                     if volume_multiplier != 1.0:
                         old_lot_size = signal.lot_size
@@ -234,6 +278,23 @@ class GoldManTradingBot:
                     if ticket:
                         logger.info(f"[MAIN_LOOP] Trade opened successfully: Ticket {ticket}")
                         self.last_activity_time = time.time()
+                        self.open_orders_max_profit[ticket] = 0.0
+                        
+                        if self.current_strategy == StrategyType.SUPER_SCALP:
+                            all_positions = self.order_executor.get_open_positions()
+                            for pos in all_positions:
+                                if pos.ticket == ticket:
+                                    logger.info(f"[MAIN_LOOP] Immediately managing new position: Ticket={ticket}, Symbol={pos.symbol}")
+                                    try:
+                                        self.order_executor.manage_position(
+                                            ticket,
+                                            self.strategy_manager,
+                                            self.risk_manager,
+                                            self.market_engine
+                                        )
+                                    except Exception as e:
+                                        logger.error(f"Error managing new position {ticket}: {e}", exc_info=True)
+                                    break
                         
                         if self.current_strategy == StrategyType.SUPER_SCALP and signal.entry_points and signal.trends and signal.timeframes:
                             logger.info("=" * 60)
@@ -347,6 +408,24 @@ class GoldManTradingBot:
                         else:
                             if current_profit > self.max_profit_tracker[ticket]:
                                 self.max_profit_tracker[ticket] = current_profit
+                        
+                        if ticket not in self.order_executor.original_sl_tp:
+                            self.order_executor.original_sl_tp[ticket] = {
+                                'sl': position.sl,
+                                'tp': position.tp
+                            }
+                            logger.info(f"[SENSITIVE] Initialized SL/TP protection for existing position in monitoring: Ticket={ticket}, Symbol={position.symbol}, SL={position.sl:.5f}, TP={position.tp:.5f}")
+                        
+                        if self.current_strategy == StrategyType.SUPER_SCALP and position.symbol == self.symbol_mgr.get_symbol_name(self.current_symbol):
+                            try:
+                                self.order_executor.manage_position(
+                                    ticket,
+                                    self.strategy_manager,
+                                    self.risk_manager,
+                                    self.market_engine
+                                )
+                            except Exception as e:
+                                logger.error(f"Error managing existing position {ticket} in monitoring loop: {e}", exc_info=True)
                     
                     for ticket in closed_positions:
                         position = mt5.history_deals_get(ticket=ticket)
@@ -369,6 +448,8 @@ class GoldManTradingBot:
                                                   "MANUAL"
                                 
                                 max_profit = self.max_profit_tracker.pop(ticket, total_profit)
+                                
+                                self.order_executor.delete_order_lines(ticket)
                                 
                                 logger.info(f"[SENSITIVE] Trade closed: Ticket={ticket}, TotalProfit={total_profit:.2f}, MaxProfit={max_profit:.2f}, CloseReason={close_reason_str}, Balance={account_info.balance:.2f}, Equity={account_info.equity:.2f}")
                                 cursor.execute("SELECT * FROM trades WHERE ticket = ?", (ticket,))

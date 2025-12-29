@@ -43,7 +43,9 @@ class DatabaseManager:
                     entry_time DATETIME,
                     exit_time DATETIME,
                     strategy TEXT,
-                    status TEXT
+                    status TEXT,
+                    trailing_stop_applied INTEGER DEFAULT 0,
+                    max_profit REAL DEFAULT 0.0
                 )
             """)
             
@@ -65,6 +67,16 @@ class DatabaseManager:
             
             try:
                 cursor.execute("ALTER TABLE rl_experiences ADD COLUMN closed_by_sl_tp INTEGER DEFAULT 0")
+            except sqlite3.OperationalError:
+                pass
+            
+            try:
+                cursor.execute("ALTER TABLE trades ADD COLUMN trailing_stop_applied INTEGER DEFAULT 0")
+            except sqlite3.OperationalError:
+                pass
+            
+            try:
+                cursor.execute("ALTER TABLE trades ADD COLUMN max_profit REAL DEFAULT 0.0")
             except sqlite3.OperationalError:
                 pass
             
@@ -512,6 +524,24 @@ class DatabaseManager:
             return False
         except Exception as e:
             logger.error(f"Unexpected error saving RL trend strength for {symbol}-{strategy}-{timeframe}: {e}")
+            return False
+    
+    def update_experience_closed_by_sl_tp(self, order_id: int, closed_by_sl_tp: int = 1) -> bool:
+        try:
+            with self.get_cursor() as cursor:
+                cursor.execute("""
+                    UPDATE rl_experiences
+                    SET closed_by_sl_tp = ?
+                    WHERE trade_id = ?
+                """, (closed_by_sl_tp, order_id))
+                self.conn.commit()
+                return True
+        except sqlite3.Error as e:
+            logger.error(f"Error updating experience closed_by_sl_tp for order {order_id}: {e}")
+            self.conn.rollback()
+            return False
+        except Exception as e:
+            logger.error(f"Unexpected error updating experience closed_by_sl_tp for order {order_id}: {e}")
             return False
     
     def close(self):

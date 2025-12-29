@@ -267,6 +267,8 @@ class OrderExecutor:
             tp_current = position.tp
             volume = position.volume
             symbol = position.symbol
+            position_profit = position.profit
+            position_profit = position.profit
             
             if ticket in self.original_sl_tp:
                 original_sl = self.original_sl_tp[ticket]['sl']
@@ -286,8 +288,23 @@ class OrderExecutor:
                 else:
                     tolerance = 1.0
                 
-                sl_changed = abs(sl_current - original_sl) > tolerance if original_sl > 0 else sl_current != original_sl
-                tp_changed = abs(tp_current - original_tp) > tolerance if original_tp > 0 else tp_current != original_tp
+                sl_changed = False
+                tp_changed = False
+                
+                if original_sl > 0:
+                    sl_diff = abs(sl_current - original_sl)
+                    if sl_diff > tolerance:
+                        if position.type == mt5.ORDER_TYPE_BUY:
+                            sl_changed = sl_current < original_sl
+                        else:
+                            sl_changed = sl_current > original_sl
+                else:
+                    sl_changed = sl_current != original_sl
+                
+                if original_tp > 0:
+                    tp_changed = abs(tp_current - original_tp) > tolerance
+                else:
+                    tp_changed = tp_current != original_tp
                 
                 if sl_changed or tp_changed:
                     import time
@@ -317,16 +334,55 @@ class OrderExecutor:
                         else:
                             logger.error(f"[SENSITIVE] Failed to restore SL/TP: Ticket={ticket}, Retcode={result.retcode}, Comment={result.comment}")
             
-            if position.type == mt5.ORDER_TYPE_BUY:
-                profit_pct = ((current_price - entry_price) / entry_price) * 100
-            else:
-                profit_pct = ((entry_price - current_price) / entry_price) * 100
+            account_info = self.conn_mgr.get_account_info()
+            balance_value = account_info.balance if account_info else 0.0
             
-            weakness, weakness_price = strategy_manager.check_trend_weakness()
-            if weakness and weakness_price:
-                new_sl = weakness_price
-                logger.info(f"[SENSITIVE] Trend weakness detected: Ticket={ticket}, Symbol={symbol}, CurrentSL={sl_current:.5f}, WeaknessPrice={weakness_price:.5f}, NewSL={new_sl:.5f}")
-                self.update_stop_loss(ticket, new_sl)
+            price_change_pct = ((current_price - entry_price) / entry_price) * 100 if position.type == mt5.ORDER_TYPE_BUY else ((entry_price - current_price) / entry_price) * 100
+            
+            if position.type == mt5.ORDER_TYPE_BUY:
+                if current_price >= entry_price and tp_current > entry_price:
+                    distance_to_tp = current_price - entry_price
+                    total_tp_distance = tp_current - entry_price
+                    profit_pct = (distance_to_tp / total_tp_distance) * 100 if total_tp_distance > 0 else 0
+                    profit_calc_method = "tp_distance"
+                    logger.debug(f"[PROFIT_CALC] BUY in profit: Entry={entry_price:.5f}, Current={current_price:.5f}, TP={tp_current:.5f}, DistanceToTP={distance_to_tp:.5f}, TotalTPDistance={total_tp_distance:.5f}, Profit%={profit_pct:.2f}%")
+                elif current_price < entry_price and sl_current > 0 and sl_current < entry_price:
+                    distance_to_sl = entry_price - current_price
+                    total_sl_distance = entry_price - sl_current
+                    profit_pct = ((current_price - entry_price) / total_sl_distance) * 100 if total_sl_distance > 0 else 0
+                    profit_calc_method = "sl_distance"
+                    logger.debug(f"[PROFIT_CALC] BUY in loss: Entry={entry_price:.5f}, Current={current_price:.5f}, SL={sl_current:.5f}, DistanceToSL={distance_to_sl:.5f}, TotalSLDistance={total_sl_distance:.5f}, Profit%={profit_pct:.2f}%")
+                else:
+                    profit_pct = price_change_pct
+                    profit_calc_method = "price_change"
+                    logger.debug(f"[PROFIT_CALC] BUY fallback: Entry={entry_price:.5f}, Current={current_price:.5f}, TP={tp_current:.5f}, SL={sl_current:.5f}, PriceChange%={price_change_pct:.2f}%, Profit%={profit_pct:.2f}%")
+            else:
+                if current_price <= entry_price and tp_current > 0 and tp_current < entry_price:
+                    distance_to_tp = entry_price - current_price
+                    total_tp_distance = entry_price - tp_current
+                    profit_pct = (distance_to_tp / total_tp_distance) * 100 if total_tp_distance > 0 else 0
+                    profit_calc_method = "tp_distance"
+                    logger.debug(f"[PROFIT_CALC] SELL in profit: Entry={entry_price:.5f}, Current={current_price:.5f}, TP={tp_current:.5f}, DistanceToTP={distance_to_tp:.5f}, TotalTPDistance={total_tp_distance:.5f}, Profit%={profit_pct:.2f}%")
+                elif current_price > entry_price and sl_current > entry_price:
+                    distance_to_sl = current_price - entry_price
+                    total_sl_distance = sl_current - entry_price
+                    profit_pct = ((entry_price - current_price) / total_sl_distance) * 100 if total_sl_distance > 0 else 0
+                    profit_calc_method = "sl_distance"
+                    logger.debug(f"[PROFIT_CALC] SELL in loss: Entry={entry_price:.5f}, Current={current_price:.5f}, SL={sl_current:.5f}, DistanceToSL={distance_to_sl:.5f}, TotalSLDistance={total_sl_distance:.5f}, Profit%={profit_pct:.2f}%")
+                else:
+                    profit_pct = price_change_pct
+                    profit_calc_method = "price_change"
+                    logger.debug(f"[PROFIT_CALC] SELL fallback: Entry={entry_price:.5f}, Current={current_price:.5f}, TP={tp_current:.5f}, SL={sl_current:.5f}, PriceChange%={price_change_pct:.2f}%, Profit%={profit_pct:.2f}%")
+            
+            profit_vs_balance_pct = (position_profit / balance_value) * 100 if balance_value > 0 else 0.0
+            
+            logger.info(f"[MANAGE_POSITION] Ticket={ticket}, Symbol={symbol}, Direction={'BUY' if position.type == mt5.ORDER_TYPE_BUY else 'SELL'}")
+            logger.info(f"  Entry={entry_price:.5f}, Current={current_price:.5f}, PriceChange%={price_change_pct:.2f}%")
+            logger.info(f"  Profit=${position_profit:.2f}, Balance=${balance_value:.2f}")
+            logger.info(f"  Profit%={profit_pct:.2f}% (to TP/SL, method: {profit_calc_method}), Profit% vs Balance={profit_vs_balance_pct:.2f}%")
+            logger.info(f"  SL={sl_current:.5f}, TP={tp_current:.5f}, Volume={volume:.2f}")
+            logger.info(f"  Trailing Stop Conditions: >=10%={profit_pct >= 10}, >=15%={profit_pct >= 15}, >=25%={profit_pct >= 25}, >=50%={profit_pct >= 50}, >=75%={profit_pct >= 75}, >=80%={profit_pct >= 80}")
+            logger.info(f"  Partial Exit Conditions: >=5%={profit_pct >= 5}, >=10%={profit_pct >= 10}, >=50%={profit_pct >= 50}, >=75%={profit_pct >= 75}")
             
             should_close_and_reopen = self.check_close_and_reopen(position, profit_pct, strategy_manager, risk_manager, market_engine)
             if should_close_and_reopen:
@@ -334,9 +390,32 @@ class OrderExecutor:
                 self.close_position(ticket)
                 return False
             
-            self.apply_trailing_stop(position, profit_pct, risk_manager, market_engine, strategy_manager.current_strategy)
+            logger.info(f"[MANAGE_POSITION] Calling apply_trailing_stop and apply_partial_exit for ticket {ticket}, profit_pct={profit_pct:.2f}%, strategy={strategy_manager.current_strategy}")
             
-            self.apply_partial_exit(position, profit_pct, risk_manager)
+            self.apply_trailing_stop(position, profit_pct, risk_manager, market_engine, strategy_manager.current_strategy)
+            self.apply_partial_exit(position, profit_pct, risk_manager, strategy_manager.current_strategy)
+            
+            from config.enums import StrategyType
+            if strategy_manager.current_strategy != StrategyType.SUPER_SCALP:
+                position_after_trailing = mt5.positions_get(ticket=ticket)
+                if position_after_trailing and len(position_after_trailing) > 0:
+                    sl_after_trailing = position_after_trailing[0].sl
+                    weakness, weakness_price = strategy_manager.check_trend_weakness()
+                    if weakness and weakness_price:
+                        if position.type == mt5.ORDER_TYPE_BUY:
+                            if weakness_price > sl_after_trailing:
+                                logger.info(f"[SENSITIVE] Trend weakness detected (BUY): Ticket={ticket}, Symbol={symbol}, CurrentSL={sl_after_trailing:.5f}, WeaknessPrice={weakness_price:.5f}, Updating SL")
+                                self.update_stop_loss(ticket, weakness_price)
+                            else:
+                                logger.debug(f"[TREND_WEAKNESS] Weakness price {weakness_price:.5f} not better than current SL {sl_after_trailing:.5f} for BUY")
+                        else:
+                            if sl_after_trailing == 0 or weakness_price < sl_after_trailing:
+                                logger.info(f"[SENSITIVE] Trend weakness detected (SELL): Ticket={ticket}, Symbol={symbol}, CurrentSL={sl_after_trailing:.5f}, WeaknessPrice={weakness_price:.5f}, Updating SL")
+                                self.update_stop_loss(ticket, weakness_price)
+                            else:
+                                logger.debug(f"[TREND_WEAKNESS] Weakness price {weakness_price:.5f} not better than current SL {sl_after_trailing:.5f} for SELL")
+            
+            logger.info(f"[MANAGE_POSITION] Completed management for ticket {ticket}")
             
             return True
             
@@ -384,72 +463,241 @@ class OrderExecutor:
             return
         
         new_sl = None
+        from config.enums import StrategyType
         
-        if profit_pct >= 10 and profit_pct < 15:
-            if direction == "BUY":
-                node = market_engine.find_nearest_node(df, entry_price, "below")
-                if node:
-                    new_sl = node - adjustment
+        if strategy == StrategyType.SUPER_SCALP:
+            logger.info(f"[TRAILING_STOP] Super Scalp - Checking conditions: Ticket={position.ticket}, Profit%={profit_pct:.2f}%, Direction={direction}")
+            
+            if profit_pct >= 10 and profit_pct < 15:
+                logger.info(f"[TRAILING_STOP] Condition met: 10% <= Profit% < 15% (Current: {profit_pct:.2f}%)")
+                if direction == "BUY":
+                    node = market_engine.find_nearest_node(df, entry_price, "below")
+                    if node:
+                        new_sl = node - adjustment
+                        logger.info(f"[TRAILING_STOP] Found node for BUY: {node:.5f}, NewSL={new_sl:.5f}")
+                    else:
+                        logger.warning(f"[TRAILING_STOP] No node found for BUY at entry_price={entry_price:.5f}")
+                else:
+                    node = market_engine.find_nearest_node(df, entry_price, "above")
+                    if node:
+                        new_sl = node + adjustment
+                        logger.info(f"[TRAILING_STOP] Found node for SELL: {node:.5f}, NewSL={new_sl:.5f}")
+                    else:
+                        logger.warning(f"[TRAILING_STOP] No node found for SELL at entry_price={entry_price:.5f}")
+            
+            elif profit_pct >= 15 and profit_pct < 25:
+                logger.info(f"[TRAILING_STOP] Condition met: 15% <= Profit% < 25% (Current: {profit_pct:.2f}%)")
+                if direction == "BUY":
+                    new_sl = entry_price + adjustment
+                else:
+                    new_sl = entry_price - adjustment
+                logger.info(f"[TRAILING_STOP] Break Even +: NewSL={new_sl:.5f}, Entry={entry_price:.5f}, Adjustment={adjustment:.5f}")
+            
+            elif profit_pct >= 25 and profit_pct < 50:
+                logger.info(f"[TRAILING_STOP] Condition met: 25% <= Profit% < 50% (Current: {profit_pct:.2f}%)")
+                current_price = position.price_current
+                if direction == "BUY":
+                    new_sl = current_price - (1.5 * adjustment)
+                    if current_sl > 0 and new_sl <= current_sl:
+                        new_sl = current_sl + (symbol_info.point * 5)
+                else:
+                    new_sl = current_price + (1.5 * adjustment)
+                    if current_sl > 0 and new_sl >= current_sl:
+                        new_sl = current_sl - (symbol_info.point * 5)
+                logger.info(f"[TRAILING_STOP] Medium trailing: NewSL={new_sl:.5f}, Current={current_price:.5f}, CurrentSL={current_sl:.5f}, Adjustment={1.5 * adjustment:.5f}")
+            
+            elif profit_pct >= 50 and profit_pct < 75:
+                logger.info(f"[TRAILING_STOP] Condition met: 50% <= Profit% < 75% (Current: {profit_pct:.2f}%)")
+                current_price = position.price_current
+                if direction == "BUY":
+                    new_sl = current_price - adjustment
+                    if current_sl > 0 and new_sl <= current_sl:
+                        new_sl = current_sl + (symbol_info.point * 5)
+                else:
+                    new_sl = current_price + adjustment
+                    if current_sl > 0 and new_sl >= current_sl:
+                        new_sl = current_sl - (symbol_info.point * 5)
+                logger.info(f"[TRAILING_STOP] Close trailing: NewSL={new_sl:.5f}, Current={current_price:.5f}, CurrentSL={current_sl:.5f}, Adjustment={adjustment:.5f}")
+            
+            elif profit_pct >= 75 and profit_pct < 80:
+                logger.info(f"[TRAILING_STOP] Condition met: 75% <= Profit% < 80% (Current: {profit_pct:.2f}%)")
+                current_price = position.price_current
+                if direction == "BUY":
+                    new_sl = current_price - (0.5 * adjustment)
+                    if current_sl > 0 and new_sl <= current_sl:
+                        new_sl = current_sl + (symbol_info.point * 5)
+                else:
+                    new_sl = current_price + (0.5 * adjustment)
+                    if current_sl > 0 and new_sl >= current_sl:
+                        new_sl = current_sl - (symbol_info.point * 5)
+                logger.info(f"[TRAILING_STOP] Aggressive trailing: NewSL={new_sl:.5f}, Current={current_price:.5f}, CurrentSL={current_sl:.5f}, Adjustment={0.5 * adjustment:.5f}")
+            
+            elif profit_pct >= 80:
+                logger.info(f"[TRAILING_STOP] Condition met: Profit% >= 80% (Current: {profit_pct:.2f}%)")
+                current_price = position.price_current
+                if direction == "BUY":
+                    new_sl = current_price - adjustment
+                    if current_sl > 0 and new_sl <= current_sl:
+                        new_sl = current_sl + (symbol_info.point * 5)
+                else:
+                    new_sl = current_price + adjustment
+                    if current_sl > 0 and new_sl >= current_sl:
+                        new_sl = current_sl - (symbol_info.point * 5)
+                logger.info(f"[TRAILING_STOP] Maximum trailing: NewSL={new_sl:.5f}, Current={current_price:.5f}, CurrentSL={current_sl:.5f}, Adjustment={adjustment:.5f}")
             else:
-                node = market_engine.find_nearest_node(df, entry_price, "above")
-                if node:
-                    new_sl = node + adjustment
-        
-        elif profit_pct >= 15 and profit_pct < 50:
-            if direction == "BUY":
-                new_sl = entry_price + adjustment
-            else:
-                new_sl = entry_price - adjustment
-        
-        elif profit_pct >= 50 and profit_pct < 75:
-            target_price = entry_price * (1 + 0.5 * (1 if direction == "BUY" else -1))
-            if direction == "BUY":
-                node = market_engine.find_nearest_node(df, target_price, "below")
-                if node:
-                    new_sl = node - adjustment
-            else:
-                node = market_engine.find_nearest_node(df, target_price, "above")
-                if node:
-                    new_sl = node + adjustment
-        
-        elif profit_pct >= 75 and profit_pct < 80:
-            target_price = entry_price * (1 + 0.75 * (1 if direction == "BUY" else -1))
-            if direction == "BUY":
-                node = market_engine.find_nearest_node(df, target_price, "below")
-                if node:
-                    new_sl = node - adjustment
-            else:
-                node = market_engine.find_nearest_node(df, target_price, "above")
-                if node:
-                    new_sl = node + adjustment
-        
-        elif profit_pct >= 80:
-            current_price = position.price_current
-            if direction == "BUY":
-                new_sl = current_price - adjustment
-            else:
-                new_sl = current_price + adjustment
+                logger.info(f"[TRAILING_STOP] No condition met: Profit%={profit_pct:.2f}% (Required: >=10% for first stage)")
+        else:
+            if profit_pct >= 10 and profit_pct < 15:
+                if direction == "BUY":
+                    node = market_engine.find_nearest_node(df, entry_price, "below")
+                    if node:
+                        new_sl = node - adjustment
+                else:
+                    node = market_engine.find_nearest_node(df, entry_price, "above")
+                    if node:
+                        new_sl = node + adjustment
+            
+            elif profit_pct >= 15 and profit_pct < 50:
+                if direction == "BUY":
+                    new_sl = entry_price + adjustment
+                else:
+                    new_sl = entry_price - adjustment
+            
+            elif profit_pct >= 50 and profit_pct < 75:
+                target_price = entry_price * (1 + 0.5 * (1 if direction == "BUY" else -1))
+                if direction == "BUY":
+                    node = market_engine.find_nearest_node(df, target_price, "below")
+                    if node:
+                        new_sl = node - adjustment
+                else:
+                    node = market_engine.find_nearest_node(df, target_price, "above")
+                    if node:
+                        new_sl = node + adjustment
+            
+            elif profit_pct >= 75 and profit_pct < 80:
+                target_price = entry_price * (1 + 0.75 * (1 if direction == "BUY" else -1))
+                if direction == "BUY":
+                    node = market_engine.find_nearest_node(df, target_price, "below")
+                    if node:
+                        new_sl = node - adjustment
+                else:
+                    node = market_engine.find_nearest_node(df, target_price, "above")
+                    if node:
+                        new_sl = node + adjustment
+            
+            elif profit_pct >= 80:
+                current_price = position.price_current
+                if direction == "BUY":
+                    new_sl = current_price - adjustment
+                else:
+                    new_sl = current_price + adjustment
         
         if new_sl is not None:
-            if direction == "BUY" and new_sl > current_sl:
-                logger.info(f"[SENSITIVE] Trailing stop triggered (BUY): Ticket={position.ticket}, Symbol={symbol}, Profit={profit_pct:.2f}%, OldSL={current_sl:.5f}, NewSL={new_sl:.5f}")
-                self.update_stop_loss(position.ticket, new_sl)
-            elif direction == "SELL" and (current_sl == 0 or new_sl < current_sl):
-                logger.info(f"[SENSITIVE] Trailing stop triggered (SELL): Ticket={position.ticket}, Symbol={symbol}, Profit={profit_pct:.2f}%, OldSL={current_sl:.5f}, NewSL={new_sl:.5f}")
-                self.update_stop_loss(position.ticket, new_sl)
+            should_update = False
+            tolerance = symbol_info.point * 10
+            
+            if direction == "BUY":
+                if current_sl == 0:
+                    should_update = True
+                elif new_sl > current_sl + tolerance:
+                    should_update = True
+                else:
+                    logger.debug(f"[TRAILING_STOP] BUY: NewSL ({new_sl:.5f}) not significantly better than CurrentSL ({current_sl:.5f}), difference: {new_sl - current_sl:.5f}")
+            else:
+                if current_sl == 0:
+                    should_update = True
+                elif new_sl < current_sl - tolerance:
+                    should_update = True
+                else:
+                    logger.debug(f"[TRAILING_STOP] SELL: NewSL ({new_sl:.5f}) not significantly better than CurrentSL ({current_sl:.5f}), difference: {current_sl - new_sl:.5f}")
+            
+            if should_update:
+                logger.info(f"[SENSITIVE] Trailing stop triggered ({direction}): Ticket={position.ticket}, Symbol={symbol}, Profit={profit_pct:.2f}%, OldSL={current_sl:.5f}, NewSL={new_sl:.5f}")
+                update_success = self.update_stop_loss(position.ticket, new_sl)
+                
+                if strategy == StrategyType.SUPER_SCALP:
+                    stage = None
+                    if profit_pct >= 10 and profit_pct < 15:
+                        stage = "10"
+                    elif profit_pct >= 15 and profit_pct < 25:
+                        stage = "15"
+                    elif profit_pct >= 25 and profit_pct < 50:
+                        stage = "25"
+                    elif profit_pct >= 50 and profit_pct < 75:
+                        stage = "50"
+                    elif profit_pct >= 75 and profit_pct < 80:
+                        stage = "75"
+                    elif profit_pct >= 80:
+                        stage = "80"
+                    
+                    if not stage:
+                        logger.debug(f"[TRAILING_STOP] No stage determined for profit_pct={profit_pct:.2f}%")
+            else:
+                logger.debug(f"[TRAILING_STOP] No update needed: Ticket={position.ticket}, Direction={direction}, CurrentSL={current_sl:.5f}, NewSL={new_sl:.5f}, Profit%={profit_pct:.2f}%")
+        else:
+            if strategy == StrategyType.SUPER_SCALP:
+                logger.info(f"[TRAILING_STOP] Super Scalp: No trailing stop calculated. Ticket={position.ticket}")
+                logger.info(f"  Profit%={profit_pct:.2f}%, Direction={direction}, Entry={entry_price:.5f}, Current={position.price_current:.5f}")
+                logger.info(f"  Conditions check: >=10%={profit_pct >= 10} ({profit_pct:.2f} >= 10), >=15%={profit_pct >= 15} ({profit_pct:.2f} >= 15), >=25%={profit_pct >= 25} ({profit_pct:.2f} >= 25)")
+                logger.info(f"  All conditions: >=10%={profit_pct >= 10}, >=15%={profit_pct >= 15}, >=25%={profit_pct >= 25}, >=50%={profit_pct >= 50}, >=75%={profit_pct >= 75}, >=80%={profit_pct >= 80}")
     
-    def apply_partial_exit(self, position: Any, profit_pct: float, risk_manager: RiskManager):
-        if profit_pct >= 50 and profit_pct < 75:
-            if position.volume > 0.02:
-                close_volume = position.volume * 0.5
-                logger.info(f"[SENSITIVE] Partial exit condition met (50% profit): Ticket={position.ticket}, Symbol={position.symbol}, Profit={profit_pct:.2f}%, Closing 50% of volume={close_volume:.2f}")
-                self.close_partial_position(position.ticket, close_volume)
+    def apply_partial_exit(self, position: Any, profit_pct: float, risk_manager: RiskManager, strategy: Any = None):
+        from config.enums import StrategyType
         
-        elif profit_pct >= 75:
-            if position.volume > 0.01:
-                close_volume = position.volume * 0.3
-                logger.info(f"[SENSITIVE] Partial exit condition met (75% profit): Ticket={position.ticket}, Symbol={position.symbol}, Profit={profit_pct:.2f}%, Closing 30% of volume={close_volume:.2f}")
-                self.close_partial_position(position.ticket, close_volume)
+        logger.info(f"[PARTIAL_EXIT] Checking conditions: Ticket={position.ticket}, Strategy={strategy}, Profit%={profit_pct:.2f}%, Volume={position.volume:.2f}")
+        
+        if strategy == StrategyType.SUPER_SCALP:
+            logger.info(f"[PARTIAL_EXIT] Super Scalp - Checking conditions: Ticket={position.ticket}, Profit%={profit_pct:.2f}%, Volume={position.volume:.2f}")
+            
+            if profit_pct >= 5 and profit_pct < 7:
+                logger.info(f"[PARTIAL_EXIT] Condition met: 5% <= Profit% < 7% (Current: {profit_pct:.2f}%)")
+                if position.volume > 0.02:
+                    close_volume = position.volume * 0.3
+                    logger.info(f"[SENSITIVE] Partial exit executing: Closing 30% of volume={close_volume:.2f} (Current volume: {position.volume:.2f})")
+                    self.close_partial_position(position.ticket, close_volume)
+                else:
+                    logger.warning(f"[PARTIAL_EXIT] Volume too small: {position.volume:.2f} <= 0.02, skipping partial exit")
+            
+            elif profit_pct >= 10 and profit_pct < 15:
+                logger.info(f"[PARTIAL_EXIT] Condition met: 10% <= Profit% < 15% (Current: {profit_pct:.2f}%)")
+                if position.volume > 0.01:
+                    close_volume = position.volume * 0.2
+                    logger.info(f"[SENSITIVE] Partial exit executing: Closing 20% of remaining volume={close_volume:.2f} (Current volume: {position.volume:.2f})")
+                    self.close_partial_position(position.ticket, close_volume)
+                else:
+                    logger.warning(f"[PARTIAL_EXIT] Volume too small: {position.volume:.2f} <= 0.01, skipping partial exit")
+            
+            elif profit_pct >= 50 and profit_pct < 75:
+                logger.info(f"[PARTIAL_EXIT] Condition met: 50% <= Profit% < 75% (Current: {profit_pct:.2f}%)")
+                if position.volume > 0.01:
+                    close_volume = position.volume * 0.3
+                    logger.info(f"[SENSITIVE] Partial exit executing: Closing 30% of remaining volume={close_volume:.2f} (Current volume: {position.volume:.2f})")
+                    self.close_partial_position(position.ticket, close_volume)
+                else:
+                    logger.warning(f"[PARTIAL_EXIT] Volume too small: {position.volume:.2f} <= 0.01, skipping partial exit")
+            
+            elif profit_pct >= 75:
+                logger.info(f"[PARTIAL_EXIT] Condition met: Profit% >= 75% (Current: {profit_pct:.2f}%)")
+                if position.volume > 0.01:
+                    close_volume = position.volume * 0.2
+                    logger.info(f"[SENSITIVE] Partial exit executing: Closing 20% of remaining volume={close_volume:.2f} (Current volume: {position.volume:.2f})")
+                    self.close_partial_position(position.ticket, close_volume)
+                else:
+                    logger.warning(f"[PARTIAL_EXIT] Volume too small: {position.volume:.2f} <= 0.01, skipping partial exit")
+            else:
+                logger.info(f"[PARTIAL_EXIT] No condition met: Profit%={profit_pct:.2f}% (Required: >=5% for first stage, Current volume: {position.volume:.2f})")
+        else:
+            if profit_pct >= 50 and profit_pct < 75:
+                if position.volume > 0.02:
+                    close_volume = position.volume * 0.5
+                    logger.info(f"[SENSITIVE] Partial exit condition met (50% profit): Ticket={position.ticket}, Symbol={position.symbol}, Profit={profit_pct:.2f}%, Closing 50% of volume={close_volume:.2f}")
+                    self.close_partial_position(position.ticket, close_volume)
+            
+            elif profit_pct >= 75:
+                if position.volume > 0.01:
+                    close_volume = position.volume * 0.3
+                    logger.info(f"[SENSITIVE] Partial exit condition met (75% profit): Ticket={position.ticket}, Symbol={position.symbol}, Profit={profit_pct:.2f}%, Closing 30% of volume={close_volume:.2f}")
+                    self.close_partial_position(position.ticket, close_volume)
     
     def update_stop_loss(self, ticket: int, new_sl: float) -> bool:
         if mt5 is None:
@@ -495,6 +743,9 @@ class OrderExecutor:
                 
                 if is_trailing_stop:
                     self.db.update_order(ticket, {'trailing_stop_applied': 1})
+                    if ticket in self.original_sl_tp:
+                        self.original_sl_tp[ticket]['sl'] = new_sl
+                        logger.debug(f"[SENSITIVE] Updated original_sl_tp for ticket {ticket}: SL={new_sl:.5f}")
                 
                 if self.main_controller and self.main_controller.telegram_bot:
                     import asyncio
@@ -796,3 +1047,4 @@ class OrderExecutor:
         except Exception as e:
             logger.error(f"Error closing position: {e}")
             return False
+    
