@@ -841,14 +841,18 @@ class OrderExecutor:
                     if ticket in self.original_sl_tp:
                         self.original_sl_tp[ticket]['sl'] = new_sl
                         logger.debug(f"[SENSITIVE] Updated original_sl_tp for ticket {ticket}: SL={new_sl:.5f}")
-                
+
+                # اطلاع‌رسانی برای همه تغییرات SL/TP
                 if self.main_controller and self.main_controller.telegram_bot:
                     import asyncio
                     try:
                         loop = asyncio.get_event_loop()
+                        update_type = "Trailing Stop Updated" if is_trailing_stop else "Stop Loss Updated"
+                        emoji = "📈" if is_trailing_stop else "🔒"
+
                         if loop.is_running():
                             asyncio.create_task(self._send_telegram_notification(
-                                f"""📈 <b>Trailing Stop Updated</b>
+                                f"""{emoji} <b>{update_type}</b>
 
 📊 <b>Order Details:</b>
 • Ticket: {ticket}
@@ -859,7 +863,7 @@ class OrderExecutor:
                             ))
                         else:
                             loop.run_until_complete(self._send_telegram_notification(
-                                f"""📈 <b>Trailing Stop Updated</b>
+                                f"""{emoji} <b>{update_type}</b>
 
 📊 <b>Order Details:</b>
 • Ticket: {ticket}

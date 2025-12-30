@@ -181,6 +181,31 @@ class GoldManBot:
                                     if result:
                                         managed_any = True
                                         logger.info(f"[MAIN_LOOP] Position {position.ticket} managed successfully")
+
+                                        # اطلاع‌رسانی مدیریت موقعیت
+                                        if self.telegram_bot:
+                                            try:
+                                                account_info = self.conn_mgr.get_account_info()
+                                                message = f"""🔄 <b>Position Managed</b>
+
+📊 <b>Position Details:</b>
+• Ticket: {position.ticket}
+• Symbol: {position.symbol}
+• Direction: {'BUY' if position.type == mt5.ORDER_TYPE_BUY else 'SELL'}
+• Entry: {position.price_open:.5f}
+• Current: {position.price_current:.5f}
+• SL: {position.sl:.5f}
+• TP: {position.tp:.5f}
+• Volume: {position.volume:.2f}
+
+💰 <b>Account:</b>
+• Balance: ${account_info.balance:.2f}
+• Equity: ${account_info.equity:.2f}"""
+                                                await self.telegram_bot.send_notification(message)
+                                                logger.info(f"[TELEGRAM] Position managed notification sent for ticket {position.ticket}")
+                                            except Exception as e:
+                                                logger.error(f"[TELEGRAM] Error sending position managed notification: {e}")
+
                                     else:
                                         logger.warning(f"[MAIN_LOOP] Position {position.ticket} management returned False")
                                 elif position.ticket == self.order_executor.current_position:
