@@ -431,19 +431,19 @@ class StrategyManager:
             compatible_pairs = []
             if trend_0 and trend_1 and trend_0 == trend_1 and trend_0 != "SIDEWAYS":
                 combined_weight = weight_0 + weight_1
-                if combined_weight >= 0.8:
+                if combined_weight >= 0.6:
                     compatible_pairs.append((0, 1, combined_weight, trend_0))
             if trend_0 and trend_2 and trend_0 == trend_2 and trend_0 != "SIDEWAYS":
                 combined_weight = weight_0 + weight_2
-                if combined_weight >= 0.8:
+                if combined_weight >= 0.6:
                     compatible_pairs.append((0, 2, combined_weight, trend_0))
             if trend_1 and trend_2 and trend_1 == trend_2 and trend_1 != "SIDEWAYS":
                 combined_weight = weight_1 + weight_2
-                if combined_weight >= 0.8:
+                if combined_weight >= 0.6:
                     compatible_pairs.append((1, 2, combined_weight, trend_1))
             
             if not compatible_pairs:
-                logger.info(f"❌ [ENTRY] Rejected - No compatible trend pairs with combined weight >= 60%")
+                logger.info(f"❌ [ENTRY] Rejected - No compatible trend pairs with combined weight >= 80%")
                 trend0_emoji = "📈" if trend_0 == "UP" else "📉" if trend_0 == "DOWN" else "🔄"
                 trend1_emoji = "📈" if trend_1 == "UP" else "📉" if trend_1 == "DOWN" else "🔄"
                 trend2_emoji = "📈" if trend_2 == "UP" else "📉" if trend_2 == "DOWN" else "🔄"
