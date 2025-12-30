@@ -241,6 +241,10 @@ class OrderExecutor:
             
             logger.info(f"[SENSITIVE] Trade opened successfully: Ticket={ticket}, Symbol={signal.symbol}, Direction={signal.direction}, Entry={price:.5f}, SL={sl:.5f}, TP={tp:.5f}, LotSize={signal.lot_size:.2f}, SLDistance={sl_pips:.1f}pips, TPDistance={tp_pips:.1f}pips, RiskAmount=${risk_amount:.2f}, RewardAmount=${reward_amount:.2f}, R/R={signal.confidence:.2f}, Balance={balance:.2f}, Equity={equity:.2f}, FreeMargin={margin_free:.2f}, MarginLevel={margin_level:.2f}%")
             
+            # اطلاعات حساب هنگام ورود
+            symbol_info = mt5.symbol_info(signal.symbol)
+            spread = symbol_info.spread * symbol_info.point if symbol_info else 0.0
+
             if not self.db.save_order({
                 'ticket': ticket,
                 'symbol': signal.symbol,
@@ -250,7 +254,10 @@ class OrderExecutor:
                 'take_profit': tp,
                 'lot_size': signal.lot_size,
                 'entry_time': datetime.now(),
-                'strategy': signal.timeframe.name
+                'strategy': signal.timeframe.name,
+                'spread': spread,
+                'entry_balance': balance,
+                'entry_equity': equity
             }):
                 logger.warning(f"Failed to save trade {ticket} to database, but trade is open")
             

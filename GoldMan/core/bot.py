@@ -505,11 +505,24 @@ class GoldManBot:
                                 cursor.execute("SELECT * FROM trades WHERE ticket = ?", (ticket,))
                                 order_data = cursor.fetchone()
                                 
+                                # محاسبه اطلاعات کامل بسته شدن
+                                exit_price = close_deal.price
+                                commission_total = sum(d.commission for d in deals)
+                                swap_total = sum(d.swap for d in deals)
+                                net_profit = total_profit - commission_total - swap_total
+
                                 if not self.db_manager.update_order(ticket, {
                                     'status': 'CLOSED',
                                     'exit_time': datetime.now(),
+                                    'exit_price': exit_price,
                                     'profit': total_profit,
-                                    'max_profit': max_profit
+                                    'max_profit': max_profit,
+                                    'close_reason': close_reason_str,
+                                    'commission': commission_total,
+                                    'swap': swap_total,
+                                    'exit_balance': account_info.balance,
+                                    'exit_equity': account_info.equity,
+                                    'net_profit': net_profit
                                 }):
                                     logger.warning(f"Failed to update trade {ticket} in database after monitoring detected closure")
                                 

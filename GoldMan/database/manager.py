@@ -45,7 +45,16 @@ class DatabaseManager:
                     strategy TEXT,
                     status TEXT,
                     trailing_stop_applied INTEGER DEFAULT 0,
-                    max_profit REAL DEFAULT 0.0
+                    max_profit REAL DEFAULT 0.0,
+                    close_reason TEXT,
+                    spread REAL DEFAULT 0.0,
+                    commission REAL DEFAULT 0.0,
+                    swap REAL DEFAULT 0.0,
+                    entry_balance REAL DEFAULT 0.0,
+                    exit_balance REAL DEFAULT 0.0,
+                    entry_equity REAL DEFAULT 0.0,
+                    exit_equity REAL DEFAULT 0.0,
+                    net_profit REAL DEFAULT 0.0
                 )
             """)
             
@@ -74,9 +83,54 @@ class DatabaseManager:
                 cursor.execute("ALTER TABLE trades ADD COLUMN trailing_stop_applied INTEGER DEFAULT 0")
             except sqlite3.OperationalError:
                 pass
-            
+
             try:
                 cursor.execute("ALTER TABLE trades ADD COLUMN max_profit REAL DEFAULT 0.0")
+            except sqlite3.OperationalError:
+                pass
+
+            try:
+                cursor.execute("ALTER TABLE trades ADD COLUMN close_reason TEXT")
+            except sqlite3.OperationalError:
+                pass
+
+            try:
+                cursor.execute("ALTER TABLE trades ADD COLUMN spread REAL DEFAULT 0.0")
+            except sqlite3.OperationalError:
+                pass
+
+            try:
+                cursor.execute("ALTER TABLE trades ADD COLUMN commission REAL DEFAULT 0.0")
+            except sqlite3.OperationalError:
+                pass
+
+            try:
+                cursor.execute("ALTER TABLE trades ADD COLUMN swap REAL DEFAULT 0.0")
+            except sqlite3.OperationalError:
+                pass
+
+            try:
+                cursor.execute("ALTER TABLE trades ADD COLUMN entry_balance REAL DEFAULT 0.0")
+            except sqlite3.OperationalError:
+                pass
+
+            try:
+                cursor.execute("ALTER TABLE trades ADD COLUMN exit_balance REAL DEFAULT 0.0")
+            except sqlite3.OperationalError:
+                pass
+
+            try:
+                cursor.execute("ALTER TABLE trades ADD COLUMN entry_equity REAL DEFAULT 0.0")
+            except sqlite3.OperationalError:
+                pass
+
+            try:
+                cursor.execute("ALTER TABLE trades ADD COLUMN exit_equity REAL DEFAULT 0.0")
+            except sqlite3.OperationalError:
+                pass
+
+            try:
+                cursor.execute("ALTER TABLE trades ADD COLUMN net_profit REAL DEFAULT 0.0")
             except sqlite3.OperationalError:
                 pass
             
@@ -248,10 +302,10 @@ class DatabaseManager:
         try:
             with self.get_cursor() as cursor:
                 cursor.execute("""
-                    INSERT OR REPLACE INTO trades 
-                    (ticket, symbol, direction, entry_price, stop_loss, take_profit, 
-                     lot_size, entry_time, strategy, status)
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    INSERT OR REPLACE INTO trades
+                    (ticket, symbol, direction, entry_price, stop_loss, take_profit,
+                     lot_size, entry_time, strategy, status, spread, entry_balance, entry_equity)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """, (
                     order_data.get('ticket'),
                     order_data.get('symbol'),
@@ -262,7 +316,10 @@ class DatabaseManager:
                     order_data.get('lot_size'),
                     order_data.get('entry_time'),
                     order_data.get('strategy'),
-                    order_data.get('status', 'OPEN')
+                    order_data.get('status', 'OPEN'),
+                    order_data.get('spread', 0.0),
+                    order_data.get('entry_balance', 0.0),
+                    order_data.get('entry_equity', 0.0)
                 ))
                 self.conn.commit()
                 return True
@@ -282,8 +339,10 @@ class DatabaseManager:
             return False
         
         allowed_fields = {
-            'exit_price', 'stop_loss', 'take_profit', 'profit', 
-            'exit_time', 'status', 'lot_size'
+            'exit_price', 'stop_loss', 'take_profit', 'profit',
+            'exit_time', 'status', 'lot_size', 'close_reason',
+            'spread', 'commission', 'swap', 'entry_balance',
+            'exit_balance', 'entry_equity', 'exit_equity', 'net_profit'
         }
         
         filtered_updates = {k: v for k, v in updates.items() if k in allowed_fields}
