@@ -270,7 +270,7 @@ async def main():
             selected_symbol = await get_user_symbol_selection(bot)
             logger.info(f"Selected symbol: {selected_symbol.value}")
             
-            await bot.start_trading(selected_symbol, selected_strategy)
+            await bot.start_operating(selected_symbol, selected_strategy)
             logger.info("Bot started successfully!")
             
             try:
