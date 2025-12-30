@@ -101,6 +101,9 @@ class RiskManager:
         elif strategy == "SCALP" or strategy == "Scalp":
             sl_fallback = entry_price * 0.98
             tp_fallback = entry_price * 1.04
+        elif strategy == "SUPER_SCALP" or strategy == "Super Scalp":
+            sl_fallback = entry_price * 0.999
+            tp_fallback = entry_price * 1.001
         else:
             sl_fallback = entry_price * 0.995
             tp_fallback = entry_price * 1.005
@@ -271,7 +274,7 @@ class RiskManager:
             garch_alpha_1 = parameters.get('garch_alpha_1', 0.1)
             garch_beta_1 = parameters.get('garch_beta_1', 0.8)
             garch_k = parameters.get('garch_k', 0.4)
-            node_safety_margin = parameters.get('node_safety_margin', 0.8)
+            node_safety_margin = parameters.get('node_safety_margin', 0.3)
             node_spread_factor = parameters.get('node_spread_factor', 0.5)
         elif strategy == "SCALP" or strategy == "Scalp":
             atr_multiplier_sl = parameters.get('atr_multiplier_sl', 1.0)
