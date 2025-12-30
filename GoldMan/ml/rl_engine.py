@@ -80,7 +80,10 @@ class RLEngine:
             'partial_exit_percentage_1': 0.5,
             'partial_exit_percentage_2': 0.3,
             'max_sl_distance_percent': 0.004,
-            'max_tp_distance_percent': 0.008
+            'max_tp_distance_percent': 0.008,
+            'entry_threshold': 0.8,  # آستانه ورودی برای جفت روندهای سازگار
+            'min_rr_super_scalp': 1.5,  # حداقل نسبت ریسک به ریوارد برای Super Scalp
+            'max_rr_super_scalp': 3.0   # حداکثر نسبت ریسک به ریوارد برای Super Scalp
         }
         
         self.parameter_constraints = {
@@ -106,7 +109,10 @@ class RLEngine:
             'partial_exit_percentage_1': (0.3, 0.7),
             'partial_exit_percentage_2': (0.2, 0.5),
             'max_sl_distance_percent': (0.001, 0.01),
-            'max_tp_distance_percent': (0.002, 0.02)
+            'max_tp_distance_percent': (0.002, 0.02),
+            'entry_threshold': (0.5, 1.0),  # آستانه ورودی بین 50% تا 100%
+            'min_rr_super_scalp': (1.0, 2.0),  # حداقل R/R بین 1.0 تا 2.0
+            'max_rr_super_scalp': (2.0, 4.0)   # حداکثر R/R بین 2.0 تا 4.0
         }
     
     def calculate_reward(self, order_profit: float, transaction_cost: float,

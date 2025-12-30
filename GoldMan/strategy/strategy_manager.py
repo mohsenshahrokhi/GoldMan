@@ -431,19 +431,20 @@ class StrategyManager:
             compatible_pairs = []
             if trend_0 and trend_1 and trend_0 == trend_1 and trend_0 != "SIDEWAYS":
                 combined_weight = weight_0 + weight_1
-                if combined_weight >= 0.8:
+                if combined_weight >= entry_threshold:
                     compatible_pairs.append((0, 1, combined_weight, trend_0))
             if trend_0 and trend_2 and trend_0 == trend_2 and trend_0 != "SIDEWAYS":
                 combined_weight = weight_0 + weight_2
-                if combined_weight >= 0.8:
+                if combined_weight >= entry_threshold:
                     compatible_pairs.append((0, 2, combined_weight, trend_0))
             if trend_1 and trend_2 and trend_1 == trend_2 and trend_1 != "SIDEWAYS":
                 combined_weight = weight_1 + weight_2
-                if combined_weight >= 0.8:
+                if combined_weight >= entry_threshold:
                     compatible_pairs.append((1, 2, combined_weight, trend_1))
             
             if not compatible_pairs:
-                logger.info(f"❌ [ENTRY] Rejected - No compatible trend pairs with combined weight >= 80%")
+                threshold_percent = int(entry_threshold * 100)
+                logger.info(f"❌ [ENTRY] Rejected - No compatible trend pairs with combined weight >= {threshold_percent}%")
                 trend0_emoji = "📈" if trend_0 == "UP" else "📉" if trend_0 == "DOWN" else "🔄"
                 trend1_emoji = "📈" if trend_1 == "UP" else "📉" if trend_1 == "DOWN" else "🔄"
                 trend2_emoji = "📈" if trend_2 == "UP" else "📉" if trend_2 == "DOWN" else "🔄"
@@ -479,9 +480,10 @@ class StrategyManager:
         df_sl_tp = self.data_provider.get_ohlc_data(self.current_symbol, sl_tp_timeframe, 500)
         if df_sl_tp is None:
             return None
-        
+
         weights = rl_engine.get_weights(self.current_symbol, self.current_strategy.value)
         parameters = rl_engine.get_parameters(self.current_symbol, self.current_strategy.value)
+        entry_threshold = parameters.get('entry_threshold', 0.8)
         
         sl, tp = self.risk_manager.calculate_final_sl_tp(
             final_entry, direction, self.current_symbol, df_sl_tp, 

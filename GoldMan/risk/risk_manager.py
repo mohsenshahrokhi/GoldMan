@@ -327,7 +327,7 @@ class RiskManager:
         )
         
         if strategy == "SUPER_SCALP" or strategy == "Super Scalp":
-            logger.info(f"[SL_TP] Super Scalp: Using Node-Based for SL only - SL={sl_node:.5f}, TP will be calculated based on R/R 1.5-3.0")
+            logger.info(f"[SL_TP] Super Scalp: Using Node-Based for SL only - SL={sl_node:.5f}, TP will be calculated based on R/R {min_rr_super_scalp:.1f}-{max_rr_super_scalp:.1f}")
             sl_atr, tp_atr = 0.0, 0.0
             sl_garch, tp_garch = 0.0, 0.0
         else:
@@ -450,10 +450,10 @@ class RiskManager:
             
             sl_distance = abs(entry_price - sl_final) if abs(entry_price - sl_final) > 0 else 0
             if sl_distance > 0:
-                min_rr_super_scalp = 1.5
-                max_rr_super_scalp = 3.0
-                
-                target_rr = 1.5
+                min_rr_super_scalp = parameters.get('min_rr_super_scalp', 1.5) if parameters else 1.5
+                max_rr_super_scalp = parameters.get('max_rr_super_scalp', 3.0) if parameters else 3.0
+
+                target_rr = min_rr_super_scalp
                 required_tp_distance = sl_distance * target_rr
                 
                 if direction == "BUY":
@@ -469,7 +469,7 @@ class RiskManager:
                     else:
                         tp_final = entry_price - required_tp_distance
                     current_rr_check = abs(tp_final - entry_price) / sl_distance if sl_distance > 0 else 0
-                    logger.warning(f"[SL_TP] Super Scalp: Adjusted TP to meet min R/R=1.5: TP={tp_final:.5f}, R/R={current_rr_check:.2f}")
+                    logger.warning(f"[SL_TP] Super Scalp: Adjusted TP to meet min R/R={min_rr_super_scalp:.1f}: TP={tp_final:.5f}, R/R={current_rr_check:.2f}")
                 
                 final_rr = abs(tp_final - entry_price) / sl_distance if sl_distance > 0 else 0
                 logger.info(f"[SL_TP] Super Scalp: SL from Node-Based={sl_final:.5f}, TP from R/R={final_rr:.2f} (distance={abs(tp_final - entry_price):.5f}) = {tp_final:.5f}")
@@ -504,8 +504,8 @@ class RiskManager:
                             logger.debug(f"[SL_TP] Forced TP adjustment to meet min R/R: OldTP={tp_weighted:.5f}, NewTP={tp_final:.5f}, R/R={min_rr_ratio:.2f}")
         
         if strategy == "SUPER_SCALP" or strategy == "Super Scalp":
-            min_rr_super_scalp = 1.5
-            max_rr_super_scalp = 3.0
+            min_rr_super_scalp = parameters.get('min_rr_super_scalp', 1.5) if parameters else 1.5
+            max_rr_super_scalp = parameters.get('max_rr_super_scalp', 3.0) if parameters else 3.0
             
             if direction == "BUY":
                 if sl_final < entry_price - max_sl_distance:
@@ -617,7 +617,7 @@ class RiskManager:
                         sl_final = sl_new
                 
                 final_rr = abs(tp_final - entry_price) / abs(entry_price - sl_final) if abs(entry_price - sl_final) > 0 else 0
-                logger.warning(f"[SL_TP] Super Scalp: Adjusted to meet min R/R=1.5: TP={tp_final:.5f}, SL={sl_final:.5f}, R/R={final_rr:.2f}")
+                logger.warning(f"[SL_TP] Super Scalp: Adjusted to meet min R/R={min_rr_super_scalp:.1f}: TP={tp_final:.5f}, SL={sl_final:.5f}, R/R={final_rr:.2f}")
                 
                 sl_node_raw = market_engine.find_nearest_node(df, entry_price, "below" if direction == "BUY" else "above", strategy)
                 if sl_node_raw and adjustment > 0:
@@ -662,7 +662,7 @@ class RiskManager:
                     tp_final = entry_price - required_tp_distance
                     if tp_final < entry_price - max_tp_distance:
                         tp_final = entry_price - max_tp_distance
-                logger.debug(f"[SL_TP] Super Scalp: Adjusted TP to meet max R/R=3.0: TP={tp_final:.5f}, R/R={abs(tp_final - entry_price) / abs(entry_price - sl_final):.2f}")
+                logger.debug(f"[SL_TP] Super Scalp: Adjusted TP to meet max R/R={max_rr_super_scalp:.1f}: TP={tp_final:.5f}, R/R={abs(tp_final - entry_price) / abs(entry_price - sl_final):.2f}")
         elif strategy == "SCALP" or strategy == "Scalp":
             if direction == "BUY":
                 if sl_final < entry_price - max_sl_distance:
