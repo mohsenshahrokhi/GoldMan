@@ -102,8 +102,8 @@ class RiskManager:
             sl_fallback = entry_price * 0.98
             tp_fallback = entry_price * 1.04
         elif strategy == "SUPER_SCALP" or strategy == "Super Scalp":
-            sl_fallback = entry_price * 0.999
-            tp_fallback = entry_price * 1.001
+            sl_fallback = entry_price * 0.9995
+            tp_fallback = entry_price * 1.0005
         else:
             sl_fallback = entry_price * 0.995
             tp_fallback = entry_price * 1.005
@@ -300,7 +300,7 @@ class RiskManager:
         
         if max_sl_distance_percent is None:
             if strategy == "SUPER_SCALP" or strategy == "Super Scalp":
-                max_sl_distance_percent = 0.001
+                max_sl_distance_percent = 0.0005
             elif strategy == "SCALP" or strategy == "Scalp":
                 max_sl_distance_percent = 0.02
             else:
@@ -308,7 +308,7 @@ class RiskManager:
         
         if max_tp_distance_percent is None:
             if strategy == "SUPER_SCALP" or strategy == "Super Scalp":
-                max_tp_distance_percent = 0.002
+                max_tp_distance_percent = 0.001
             elif strategy == "SCALP" or strategy == "Scalp":
                 max_tp_distance_percent = 0.04
             else:
