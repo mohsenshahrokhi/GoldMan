@@ -2,7 +2,6 @@
 تنظیمات ثابت و Constants
 """
 
-# تنظیمات ریسک
 MAX_RISK_PER_TRADE = 0.005  # 0.5% از سرمایه
 MIN_LOT_SIZE = 0.01
 MAX_LOT_SIZE = 0.5

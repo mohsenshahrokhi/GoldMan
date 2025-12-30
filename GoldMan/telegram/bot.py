@@ -41,7 +41,6 @@ class TelegramBot:
         """شروع ربات تلگرام"""
         self.application = Application.builder().token(self.token).build()
         
-        # اضافه کردن handlers
         self.application.add_handler(CommandHandler("start", self.start_command))
         self.application.add_handler(CommandHandler("status", self.status_command))
         self.application.add_handler(CommandHandler("report", self.report_command))
@@ -143,7 +142,7 @@ class TelegramBot:
                 "🚀 در حال راه‌اندازی ربات..."
             )
             
-            await self.main_controller.start_trading(
+            await self.main_controller.start_operating(
                 self.selected_symbol,
                 self.selected_strategy
             )
@@ -209,7 +208,7 @@ class TelegramBot:
             "🚀 در حال راه‌اندازی ربات..."
         )
         
-        await self.main_controller.start_trading(
+        await self.main_controller.start_operating(
             self.selected_symbol,
             self.selected_strategy
         )
@@ -264,7 +263,6 @@ class TelegramBot:
         symbol = self.main_controller.current_symbol.value if self.main_controller.current_symbol else "N/A"
         strategy = self.main_controller.current_strategy.value if self.main_controller.current_strategy else "N/A"
         
-        # دریافت وزن‌های RL
         if symbol != "N/A" and strategy != "N/A":
             rl_engine = self.main_controller.rl_engine
             weights = rl_engine.get_weights(symbol, strategy)

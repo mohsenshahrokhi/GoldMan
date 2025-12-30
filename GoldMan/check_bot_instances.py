@@ -23,7 +23,6 @@ async def check_bot_status():
         app = Application.builder().token(token).build()
         await app.initialize()
         
-        # Check webhook info
         webhook_info = await app.bot.get_webhook_info()
         print(f"Webhook URL: {webhook_info.url}")
         print(f"Webhook pending updates: {webhook_info.pending_update_count}")
@@ -36,7 +35,6 @@ async def check_bot_status():
         else:
             print("\nOK: No webhook configured")
         
-        # Try to get updates (this will fail if another instance is running)
         try:
             updates = await app.bot.get_updates(limit=1, timeout=1)
             print(f"\nOK: Bot is ready. No conflicts detected.")

@@ -8,7 +8,6 @@ import os
 
 def stop_python_processes():
     try:
-        # Get all Python processes
         result = subprocess.run(
             ['tasklist', '/FI', 'IMAGENAME eq python.exe', '/FO', 'CSV'],
             capture_output=True,

@@ -24,6 +24,7 @@ class OrderSignal:
     trends: List[str] = None  # روندهای 3 تایم‌فریم اول
     timeframes: List[str] = None  # نام تایم‌فریم‌ها
     trend_strengths: List[float] = None  # قدرت روندهای هر تایم‌فریم
+    technical_signal: str = None  # سیگنال ترکیبی اندیکاتورهای تکنیکال
 
 
 @dataclass

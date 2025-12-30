@@ -12,7 +12,7 @@ except ImportError:
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 from utils.logger import setup_logger, logger
-from core.bot import GoldManTradingBot
+from core.bot import GoldManBot
 from config.enums import StrategyType, SymbolType
 
 
@@ -27,25 +27,12 @@ def create_env_file_if_not_exists():
     
     env_content = """# GoldMan Trading Bot Configuration
 
-# Telegram Bot Configuration (Optional)
-# Get your token from @BotFather on Telegram
-# Only TOKEN is required, username is optional and set via @BotFather
-# Example: TELEGRAM_BOT_TOKEN=1234567890:ABCdefGHIjklMNOpqrsTUVwxyz
 TELEGRAM_BOT_TOKEN=
 
-# Telegram Channel/Chat ID (Optional)
-# Get chat_id by sending /get_chat_id command to your bot
-# For channels: Add bot as admin, then send /get_chat_id in the channel
-# Format: -1001234567890 (negative number for channels/groups)
-# Example: TELEGRAM_CHAT_ID=-1001234567890
 TELEGRAM_CHAT_ID=
 
-# MetaTrader 5 Configuration
-# Your MT5 account login number
 MT5_LOGIN=
-# Your MT5 account password
 MT5_PASSWORD=
-# Your MT5 broker server name
 MT5_SERVER=
 """
     
@@ -101,13 +88,13 @@ async def get_user_strategy_selection() -> StrategyType:
     print("2. Scalp")
     print("3. Super Scalp")
     print("="*50)
-    print("You have 30 seconds to select. Default: Super Scalp")
+    print("You have 10 seconds to select. Default: Super Scalp")
     print("Enter choice (1-3): ", end="", flush=True)
-
+    
     try:
         selection = await asyncio.wait_for(
             asyncio.to_thread(get_strategy_input),
-            timeout=30.0
+            timeout=10.0
         )
         
         if selection == "1":
@@ -129,16 +116,19 @@ async def get_user_strategy_selection() -> StrategyType:
 
 
 async def get_console_selection(bot: GoldManTradingBot):
-    """دریافت انتخاب از console"""
+    """دریافت انتخاب از console با timeout"""
     try:
         logger.info("Console input available. You can select strategy and symbol now.")
         selected_strategy = await get_user_strategy_selection()
         logger.info(f"Selected strategy: {selected_strategy.value}")
-
+        
         selected_symbol = await get_user_symbol_selection(bot)
         logger.info(f"Selected symbol: {selected_symbol.value}")
-
+        
         return (selected_strategy, selected_symbol)
+    except asyncio.TimeoutError:
+        logger.info("Console input timeout. Waiting for Telegram selection...")
+        return None
     except Exception as e:
         logger.warning(f"Error in console selection: {e}")
         return None
@@ -151,13 +141,13 @@ async def get_user_symbol_selection(bot: GoldManTradingBot) -> SymbolType:
     print("3. YM (Dow Jones)")
     print("4. BTCUSD (Bitcoin)")
     print("="*50)
-    print("You have 30 seconds to select. Default: BTCUSD")
+    print("You have 10 seconds to select. Default: BTCUSD")
     print("Enter choice (1-4): ", end="", flush=True)
-
+    
     try:
         selection = await asyncio.wait_for(
             asyncio.to_thread(get_symbol_input),
-            timeout=30.0
+            timeout=10.0
         )
         
         if selection == "1":
@@ -193,7 +183,7 @@ async def main():
     mt5_password = os.getenv('MT5_PASSWORD')
     mt5_server = os.getenv('MT5_SERVER')
     
-    bot = GoldManTradingBot(
+    bot = GoldManBot(
         telegram_token=telegram_token,
         mt5_login=mt5_login,
         mt5_password=mt5_password,
@@ -213,73 +203,81 @@ async def main():
         logger.info(f"Telegram token status: {'SET' if telegram_token else 'NOT SET'}, Telegram Bot status: {'ACTIVE' if bot.telegram_bot else 'NOT ACTIVE'}")
         logger.info(f"Telegram chat_id status: {'SET' if telegram_chat_id else 'NOT SET'}")
         
-        # همیشه ابتدا انتخاب کاربر را بررسی کن
-        selected_strategy = None
-        selected_symbol = None
-
-        if telegram_token and bot.telegram_bot and telegram_chat_id:
-            # اگر تلگرام کاملاً تنظیم شده، اولویت با تلگرام
+        if telegram_token and bot.telegram_bot:
             logger.info("Telegram Bot is active. You can select via Telegram OR console.")
             logger.info("Send /start command to your Telegram bot OR use console input below.")
-            logger.info("Console input will timeout in 15 seconds if not used.")
-
+            logger.info("Console input will timeout in 10 seconds if not used.")
+            
             console_task = None
             try:
                 console_task = asyncio.create_task(get_console_selection(bot))
-                console_result = await asyncio.wait_for(console_task, timeout=15.0)
-                if console_result:
-                    selected_strategy, selected_symbol = console_result
-                    logger.info("Selection completed via Console")
-            except (asyncio.TimeoutError, asyncio.CancelledError):
-                logger.info("Console input timeout. Waiting for Telegram selection...")
-                console_result = None
+                console_result = await console_task
+            except asyncio.CancelledError:
+                logger.info("Console selection cancelled")
                 if console_task and not console_task.done():
                     console_task.cancel()
                     try:
                         await console_task
                     except asyncio.CancelledError:
                         pass
-
-            if not selected_strategy:
-                # منتظر انتخاب تلگرام
-                logger.info("Waiting for Telegram selection...")
+                console_result = None
+            
+            if console_result:
+                selected_strategy, selected_symbol = console_result
+                logger.info("Selection completed via Console")
+                await bot.start_operating(selected_symbol, selected_strategy)
+                logger.info("Bot started successfully!")
+                
                 try:
-                    while not bot.is_running():
+                    while True:
                         await asyncio.sleep(1)
-                    logger.info("Bot started via Telegram!")
                 except asyncio.CancelledError:
                     logger.info("Stop signal received...")
+            else:
+                if telegram_chat_id:
+                    logger.info("Console input timeout. Using default values: Super Scalp + BTCUSD")
+                    logger.info("Starting bot automatically with default settings...")
+                    selected_strategy = StrategyType.SUPER_SCALP
+                    selected_symbol = SymbolType.BTCUSD
+                    await bot.start_operating(selected_symbol, selected_strategy)
+                    logger.info("Bot started successfully with default settings!")
+                    
+                    try:
+                        while True:
+                            await asyncio.sleep(1)
+                    except asyncio.CancelledError:
+                        logger.info("Stop signal received...")
+                else:
+                    logger.info("Console input timeout. Waiting for Telegram selection...")
+                    logger.info("Send /start command to your Telegram bot to begin.")
+                    try:
+                        while True:
+                            await asyncio.sleep(1)
+                            if bot.is_running():
+                                logger.info("Bot started via Telegram!")
+                                break
+                    except asyncio.CancelledError:
+                        logger.info("Stop signal received...")
         else:
-            # استفاده از console input
             if telegram_token:
                 logger.warning("Telegram token provided but Telegram Bot failed to initialize. Using console input instead.")
             else:
                 logger.info("Telegram token not set. Using console input for selection.")
-
-            logger.info("Please select your trading options:")
+            
             selected_strategy = await get_user_strategy_selection()
             logger.info(f"Selected strategy: {selected_strategy.value}")
-
+            
             selected_symbol = await get_user_symbol_selection(bot)
             logger.info(f"Selected symbol: {selected_symbol.value}")
-
-        # شروع ربات با انتخاب‌های کاربر یا دیفالت
-        if not selected_strategy:
-            selected_strategy = StrategyType.SUPER_SCALP
-            logger.info("Using default strategy: Super Scalp")
-
-        if not selected_symbol:
-            selected_symbol = SymbolType.BTCUSD
-            logger.info("Using default symbol: BTCUSD")
-
-        await bot.start_trading(selected_symbol, selected_strategy)
-        logger.info("Bot started successfully!")
-
-        try:
-            while True:
-                await asyncio.sleep(1)
-        except asyncio.CancelledError:
-            logger.info("Stop signal received...")
+            
+            await bot.start_trading(selected_symbol, selected_strategy)
+            logger.info("Bot started successfully!")
+            
+            try:
+                while True:
+                    await asyncio.sleep(1)
+            except asyncio.CancelledError:
+                logger.info("Stop signal received...")
     
     except KeyboardInterrupt:
         logger.info("Stop signal received (KeyboardInterrupt)...")

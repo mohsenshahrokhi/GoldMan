@@ -2,7 +2,7 @@
 ماژول هسته اصلی
 """
 
-from .bot import GoldManTradingBot
+from .bot import GoldManBot
 
-__all__ = ['GoldManTradingBot']
+__all__ = ['GoldManBot']
 
