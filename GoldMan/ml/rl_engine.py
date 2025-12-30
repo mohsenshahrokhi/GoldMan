@@ -173,8 +173,8 @@ class RLEngine:
         result = self.default_parameters.copy()
         
         if strategy == "SUPER_SCALP" or strategy == "Super Scalp":
-            result['max_sl_distance_percent'] = 0.0005
-            result['max_tp_distance_percent'] = 0.001
+            result['max_sl_distance_percent'] = 0.0002
+            result['max_tp_distance_percent'] = 0.0005
         elif strategy == "SCALP" or strategy == "Scalp":
             result['max_sl_distance_percent'] = 0.02
             result['max_tp_distance_percent'] = 0.04

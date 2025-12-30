@@ -1203,7 +1203,7 @@ class MarketEngine:
 
         # برای Super Scalp، حداکثر فاصله گره را محدود کن
         if strategy == "SUPER_SCALP" or strategy == "Super Scalp":
-            max_node_distance = 0.0005  # حداکثر 0.05% فاصله برای Super Scalp
+            max_node_distance = 0.0002  # حداکثر 0.02% فاصله برای Super Scalp
             if direction == "above":
                 valid_nodes = [p for p in node_prices if p > price and (p - price) / price <= max_node_distance]
                 return min(valid_nodes) if valid_nodes else None

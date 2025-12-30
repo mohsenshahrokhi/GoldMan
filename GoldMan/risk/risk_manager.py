@@ -274,7 +274,7 @@ class RiskManager:
             garch_alpha_1 = parameters.get('garch_alpha_1', 0.1)
             garch_beta_1 = parameters.get('garch_beta_1', 0.8)
             garch_k = parameters.get('garch_k', 0.4)
-            node_safety_margin = parameters.get('node_safety_margin', 0.3)
+            node_safety_margin = parameters.get('node_safety_margin', 0.1)
             node_spread_factor = parameters.get('node_spread_factor', 0.5)
         elif strategy == "SCALP" or strategy == "Scalp":
             atr_multiplier_sl = parameters.get('atr_multiplier_sl', 1.0)
@@ -300,7 +300,7 @@ class RiskManager:
         
         if max_sl_distance_percent is None:
             if strategy == "SUPER_SCALP" or strategy == "Super Scalp":
-                max_sl_distance_percent = 0.0005
+                max_sl_distance_percent = 0.0002
             elif strategy == "SCALP" or strategy == "Scalp":
                 max_sl_distance_percent = 0.02
             else:
@@ -308,7 +308,7 @@ class RiskManager:
         
         if max_tp_distance_percent is None:
             if strategy == "SUPER_SCALP" or strategy == "Super Scalp":
-                max_tp_distance_percent = 0.001
+                max_tp_distance_percent = 0.0005
             elif strategy == "SCALP" or strategy == "Scalp":
                 max_tp_distance_percent = 0.04
             else:

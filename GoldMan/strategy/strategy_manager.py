@@ -431,15 +431,15 @@ class StrategyManager:
             compatible_pairs = []
             if trend_0 and trend_1 and trend_0 == trend_1 and trend_0 != "SIDEWAYS":
                 combined_weight = weight_0 + weight_1
-                if combined_weight >= 0.6:
+                if combined_weight >= 0.8:
                     compatible_pairs.append((0, 1, combined_weight, trend_0))
             if trend_0 and trend_2 and trend_0 == trend_2 and trend_0 != "SIDEWAYS":
                 combined_weight = weight_0 + weight_2
-                if combined_weight >= 0.6:
+                if combined_weight >= 0.8:
                     compatible_pairs.append((0, 2, combined_weight, trend_0))
             if trend_1 and trend_2 and trend_1 == trend_2 and trend_1 != "SIDEWAYS":
                 combined_weight = weight_1 + weight_2
-                if combined_weight >= 0.6:
+                if combined_weight >= 0.8:
                     compatible_pairs.append((1, 2, combined_weight, trend_1))
             
             if not compatible_pairs:
