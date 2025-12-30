@@ -115,7 +115,7 @@ async def get_user_strategy_selection() -> StrategyType:
         return StrategyType.SUPER_SCALP
 
 
-async def get_console_selection(bot: GoldManTradingBot):
+async def get_console_selection(bot: GoldManBot):
     """دریافت انتخاب از console با timeout"""
     try:
         logger.info("Console input available. You can select strategy and symbol now.")
@@ -133,7 +133,7 @@ async def get_console_selection(bot: GoldManTradingBot):
         logger.warning(f"Error in console selection: {e}")
         return None
 
-async def get_user_symbol_selection(bot: GoldManTradingBot) -> SymbolType:
+async def get_user_symbol_selection(bot: GoldManBot) -> SymbolType:
     print("\n" + "="*50)
     print("Select Trading Symbol:")
     print("1. XAUUSD (Gold)")

@@ -282,8 +282,8 @@ class TelegramBot:
                     f"✅ نماد: {self.selected_symbol.value}\n\n"
                     "🚀 در حال راه‌اندازی ربات..."
                 )
-                
-                        await self.main_controller.start_operating(
+
+                await self.main_controller.start_operating(
                     self.selected_symbol,
                     self.selected_strategy
                 )
@@ -384,8 +384,8 @@ class TelegramBot:
             await query_or_update.edit_message_text(message_text)
         elif hasattr(query_or_update, 'message'):
             await query_or_update.message.reply_text(message_text)
-        
-                        await self.main_controller.start_operating(
+
+        await self.main_controller.start_operating(
             self.selected_symbol,
             self.selected_strategy
         )
