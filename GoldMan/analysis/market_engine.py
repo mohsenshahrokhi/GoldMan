@@ -1185,22 +1185,38 @@ class MarketEngine:
         else:
             return 'RANDOM'
 
-    def find_nearest_node(self, df: pd.DataFrame, price: float, direction: str = "above") -> Optional[float]:
+    def find_nearest_node(self, df: pd.DataFrame, price: float, direction: str = "above", strategy: str = None) -> Optional[float]:
         nodes = self.identify_nodes_improved(df, min_amplitude=0.001)
         if not nodes:
             return None
 
         nodes.sort(key=lambda x: x[2], reverse=True)
 
-        top_nodes = nodes[:3]  # سه گره برتر
+        # انتخاب بهترین گره‌ها با توجه به استراتژی
+        if strategy == "SUPER_SCALP" or strategy == "Super Scalp":
+            # برای Super Scalp، فقط نزدیک‌ترین گره‌ها را در نظر بگیر
+            top_nodes = nodes[:2]  # دو گره برتر
+        else:
+            top_nodes = nodes[:3]  # سه گره برتر
+
         node_prices = [n[1] for n in top_nodes]
 
-        if direction == "above":
-            valid_nodes = [p for p in node_prices if p > price]
-            return min(valid_nodes) if valid_nodes else None
+        # برای Super Scalp، حداکثر فاصله گره را محدود کن
+        if strategy == "SUPER_SCALP" or strategy == "Super Scalp":
+            max_node_distance = 0.003  # حداکثر 0.3% فاصله برای Super Scalp
+            if direction == "above":
+                valid_nodes = [p for p in node_prices if p > price and (p - price) / price <= max_node_distance]
+                return min(valid_nodes) if valid_nodes else None
+            else:
+                valid_nodes = [p for p in node_prices if p < price and (price - p) / price <= max_node_distance]
+                return max(valid_nodes) if valid_nodes else None
         else:
-            valid_nodes = [p for p in node_prices if p < price]
-            return max(valid_nodes) if valid_nodes else None
+            if direction == "above":
+                valid_nodes = [p for p in node_prices if p > price]
+                return min(valid_nodes) if valid_nodes else None
+            else:
+                valid_nodes = [p for p in node_prices if p < price]
+                return max(valid_nodes) if valid_nodes else None
     
     def detect_trend_weakness(self, df: pd.DataFrame, timeframe: TimeFrame) -> bool:
         if np is None:

@@ -106,34 +106,9 @@ class RiskManager:
             tp_fallback = entry_price * 1.005
         
         if direction == "BUY":
-            sl_node = market_engine.find_nearest_node(df, entry_price, "below")
+            sl_node = market_engine.find_nearest_node(df, entry_price, "below", strategy)
             if sl_node is None:
                 sl_node = sl_fallback
-            else:
-                max_sl_check = max_sl_distance if max_sl_distance else (entry_price * 0.01)
-                if abs(sl_node - entry_price) > max_sl_check:
-                    sl_node = sl_fallback
-            
-            sl = sl_node - adjustment
-            if sl >= sl_node:
-                sl = sl_node - adjustment
-                logger.warning(f"[SL_TP] SL adjustment issue for BUY: sl_node={sl_node:.5f}, adjustment={adjustment:.5f}, sl={sl:.5f}. Ensuring SL is below node.")
-                sl = sl_node - adjustment
-            
-            tp_node = market_engine.find_nearest_node(df, entry_price, "above")
-            if tp_node is None:
-                tp_node = tp_fallback
-            else:
-                max_tp_check = max_tp_distance if max_tp_distance else (entry_price * 0.02)
-                if abs(tp_node - entry_price) > max_tp_check:
-                    tp_node = tp_fallback
-            
-            tp = tp_node - adjustment
-        
-        else:
-            sl_node = market_engine.find_nearest_node(df, entry_price, "below")
-            if sl_node is None:
-                sl_node = sl_fallback  # sl_fallback برای SELL پایین‌تر از Entry هست
             else:
                 max_sl_check = max_sl_distance if max_sl_distance else (entry_price * 0.01)
                 if abs(sl_node - entry_price) > max_sl_check:
@@ -142,10 +117,36 @@ class RiskManager:
             sl = sl_node - adjustment
             if sl >= sl_node:
                 sl = sl_node - adjustment
-                logger.warning(f"[SL_TP] SL adjustment issue for SELL: sl_node={sl_node:.5f}, adjustment={adjustment:.5f}, sl={sl:.5f}. Ensuring SL is below node.")
+                logger.warning(f"[SL_TP] SL adjustment issue for BUY: sl_node={sl_node:.5f}, adjustment={adjustment:.5f}, sl={sl:.5f}. Ensuring SL is below node.")
                 sl = sl_node - adjustment
-            
-            tp_node = market_engine.find_nearest_node(df, entry_price, "below")
+
+            tp_node = market_engine.find_nearest_node(df, entry_price, "above", strategy)
+            if tp_node is None:
+                tp_node = tp_fallback
+            else:
+                max_tp_check = max_tp_distance if max_tp_distance else (entry_price * 0.02)
+                if abs(tp_node - entry_price) > max_tp_check:
+                    tp_node = tp_fallback
+
+            tp = tp_node - adjustment
+        
+        else:
+            # برای SELL، SL باید بالاتر از Entry باشه
+            sl_node = market_engine.find_nearest_node(df, entry_price, "above", strategy)
+            if sl_node is None:
+                sl_node = sl_fallback  # sl_fallback برای SELL بالاتر از Entry هست
+            else:
+                max_sl_check = max_sl_distance if max_sl_distance else (entry_price * 0.01)
+                if abs(sl_node - entry_price) > max_sl_check:
+                    sl_node = sl_fallback
+
+            sl = sl_node + adjustment
+            if sl <= sl_node:
+                sl = sl_node + adjustment
+                logger.warning(f"[SL_TP] SL adjustment issue for SELL: sl_node={sl_node:.5f}, adjustment={adjustment:.5f}, sl={sl:.5f}. Ensuring SL is above node.")
+                sl = sl_node + adjustment
+
+            tp_node = market_engine.find_nearest_node(df, entry_price, "below", strategy)
             if tp_node is None:
                 tp_node = tp_fallback  # tp_fallback برای SELL پایین‌تر از Entry هست
             else:
@@ -264,14 +265,14 @@ class RiskManager:
             parameters = {}
         
         if strategy == "SUPER_SCALP" or strategy == "Super Scalp":
-            atr_multiplier_sl = parameters.get('atr_multiplier_sl', 0.3)
-            atr_multiplier_tp = parameters.get('atr_multiplier_tp', 0.6)
+            atr_multiplier_sl = parameters.get('atr_multiplier_sl', 0.2)
+            atr_multiplier_tp = parameters.get('atr_multiplier_tp', 0.4)
             garch_alpha_0 = parameters.get('garch_alpha_0', 0.0001)
             garch_alpha_1 = parameters.get('garch_alpha_1', 0.1)
             garch_beta_1 = parameters.get('garch_beta_1', 0.8)
-            garch_k = parameters.get('garch_k', 0.6)
-            node_safety_margin = parameters.get('node_safety_margin', 1.2)
-            node_spread_factor = parameters.get('node_spread_factor', 1.0)
+            garch_k = parameters.get('garch_k', 0.4)
+            node_safety_margin = parameters.get('node_safety_margin', 0.8)
+            node_spread_factor = parameters.get('node_spread_factor', 0.5)
         elif strategy == "SCALP" or strategy == "Scalp":
             atr_multiplier_sl = parameters.get('atr_multiplier_sl', 1.0)
             atr_multiplier_tp = parameters.get('atr_multiplier_tp', 2.0)
@@ -296,7 +297,7 @@ class RiskManager:
         
         if max_sl_distance_percent is None:
             if strategy == "SUPER_SCALP" or strategy == "Super Scalp":
-                max_sl_distance_percent = 0.002
+                max_sl_distance_percent = 0.001
             elif strategy == "SCALP" or strategy == "Scalp":
                 max_sl_distance_percent = 0.02
             else:
@@ -304,7 +305,7 @@ class RiskManager:
         
         if max_tp_distance_percent is None:
             if strategy == "SUPER_SCALP" or strategy == "Super Scalp":
-                max_tp_distance_percent = 0.004
+                max_tp_distance_percent = 0.002
             elif strategy == "SCALP" or strategy == "Scalp":
                 max_tp_distance_percent = 0.04
             else:
@@ -431,7 +432,7 @@ class RiskManager:
                 safety_margin = 5 * symbol_info.point
                 adjustment = spread + safety_margin + commission
                 
-                sl_node_raw = market_engine.find_nearest_node(df, entry_price, "below" if direction == "BUY" else "above")
+                sl_node_raw = market_engine.find_nearest_node(df, entry_price, "below" if direction == "BUY" else "above", strategy)
                 if sl_node_raw:
                     if direction == "BUY":
                         sl_min_required = sl_node_raw - adjustment
@@ -538,7 +539,7 @@ class RiskManager:
                         if sl_new > entry_price - (max_sl_distance * 0.3):
                             sl_new = entry_price - (max_sl_distance * 0.3)
                         
-                        sl_node_raw = market_engine.find_nearest_node(df, entry_price, "below")
+                        sl_node_raw = market_engine.find_nearest_node(df, entry_price, "below", strategy)
                         if sl_node_raw and adjustment > 0:
                             sl_min_required = sl_node_raw - adjustment
                             if sl_new > sl_min_required:
@@ -560,7 +561,7 @@ class RiskManager:
                         if sl_new < entry_price + (max_sl_distance * 0.3):
                             sl_new = entry_price + (max_sl_distance * 0.3)
                         
-                        sl_node_raw = market_engine.find_nearest_node(df, entry_price, "above")
+                        sl_node_raw = market_engine.find_nearest_node(df, entry_price, "above", strategy)
                         if sl_node_raw and adjustment > 0:
                             sl_min_required = sl_node_raw + adjustment
                             if sl_new < sl_min_required:
@@ -586,7 +587,7 @@ class RiskManager:
                         sl_distance_new = abs(tp_final - entry_price) / min_rr_super_scalp
                         sl_new = entry_price - sl_distance_new
                         
-                        sl_node_raw = market_engine.find_nearest_node(df, entry_price, "below")
+                        sl_node_raw = market_engine.find_nearest_node(df, entry_price, "below", strategy)
                         if sl_node_raw and adjustment > 0:
                             sl_min_required = sl_node_raw - adjustment
                             if sl_new > sl_min_required:
@@ -603,7 +604,7 @@ class RiskManager:
                         sl_distance_new = abs(entry_price - tp_final) / min_rr_super_scalp
                         sl_new = entry_price + sl_distance_new
                         
-                        sl_node_raw = market_engine.find_nearest_node(df, entry_price, "above")
+                        sl_node_raw = market_engine.find_nearest_node(df, entry_price, "above", strategy)
                         if sl_node_raw and adjustment > 0:
                             sl_min_required = sl_node_raw + adjustment
                             if sl_new < sl_min_required:
@@ -615,7 +616,7 @@ class RiskManager:
                 final_rr = abs(tp_final - entry_price) / abs(entry_price - sl_final) if abs(entry_price - sl_final) > 0 else 0
                 logger.warning(f"[SL_TP] Super Scalp: Adjusted to meet min R/R=1.5: TP={tp_final:.5f}, SL={sl_final:.5f}, R/R={final_rr:.2f}")
                 
-                sl_node_raw = market_engine.find_nearest_node(df, entry_price, "below" if direction == "BUY" else "above")
+                sl_node_raw = market_engine.find_nearest_node(df, entry_price, "below" if direction == "BUY" else "above", strategy)
                 if sl_node_raw and adjustment > 0:
                     if direction == "BUY":
                         sl_min_required = sl_node_raw - adjustment
