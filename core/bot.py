@@ -309,8 +309,9 @@ class GoldManTradingBot:
                             logger.info("=" * 60)
                         
                         if self.telegram_bot:
-                            account_info = self.conn_mgr.get_account_info()
-                            message = f"""✅ <b>Order Opened</b>
+                            try:
+                                account_info = self.conn_mgr.get_account_info()
+                                message = f"""✅ <b>Order Opened</b>
 
 📊 <b>Order Details:</b>
 • Ticket: {ticket}
@@ -326,9 +327,17 @@ class GoldManTradingBot:
 • Balance: ${account_info.balance:.2f}
 • Equity: ${account_info.equity:.2f}
 • Free Margin: ${getattr(account_info, 'free_margin', account_info.equity - account_info.margin):.2f}"""
-                            await self.telegram_bot.send_notification(message)
+                                await self.telegram_bot.send_notification(message)
+                                logger.info(f"[TELEGRAM] Order opened notification sent for ticket {ticket}")
+                            except Exception as e:
+                                logger.error(f"[TELEGRAM] Error sending order opened notification: {e}")
+                        else:
+                            logger.warning(f"[TELEGRAM] Telegram bot not available, skipping order opened notification for ticket {ticket}")
                         
                         params = self.rl_engine.get_parameters(signal.symbol, self.current_strategy.value)
+                        entry_weights = self.rl_engine.get_entry_weights(signal.symbol, self.current_strategy.value)
+                        trend_weights = self.rl_engine.get_trend_weights(signal.symbol, self.current_strategy.value)
+                        weights = self.rl_engine.get_weights(signal.symbol, self.current_strategy.value)
                         
                         state = {
                             'symbol': signal.symbol,
@@ -339,10 +348,26 @@ class GoldManTradingBot:
                             'timeframes': getattr(signal, 'timeframes', []),
                             'trend_strengths': getattr(signal, 'trend_strengths', []) if hasattr(signal, 'trend_strengths') else []
                         }
+                        
+                        sl_distance = abs(signal.entry_price - signal.stop_loss) if signal.stop_loss else 0
+                        tp_distance = abs(signal.take_profit - signal.entry_price) if signal.take_profit else 0
+                        rr_ratio = tp_distance / sl_distance if sl_distance > 0 else 0
+                        
                         action = {
-                            'method': 'node',
+                            'method': weights.get('node', 0.25) > 0.5 and 'node' or (weights.get('atr', 0.25) > 0.5 and 'atr' or (weights.get('garch', 0.25) > 0.5 and 'garch' or 'fixed_rr')),
                             'sl': signal.stop_loss,
                             'tp': signal.take_profit,
+                            'sl_distance': sl_distance,
+                            'tp_distance': tp_distance,
+                            'rr_ratio': rr_ratio,
+                            'entry_0': entry_weights.get('entry_0', 0.4),
+                            'entry_1': entry_weights.get('entry_1', 0.3),
+                            'entry_2': entry_weights.get('entry_2', 0.2),
+                            'entry_3': entry_weights.get('entry_3', 0.1),
+                            'trend_0': trend_weights.get('trend_0', 0.4),
+                            'trend_1': trend_weights.get('trend_1', 0.3),
+                            'trend_2': trend_weights.get('trend_2', 0.2),
+                            'trend_confidence': signal.confidence if hasattr(signal, 'confidence') else 0.0,
                             **{k: v for k, v in params.items() if k.startswith(('atr_', 'garch_', 'node_', 'min_rr', 'max_risk', 'max_sl_distance', 'max_tp_distance'))}
                         }
                         self.rl_engine.save_experience(
@@ -354,6 +379,7 @@ class GoldManTradingBot:
                             reward=0.0,
                             order_id=ticket
                         )
+                        logger.debug(f"[RL] Experience saved for trade {ticket}: Entry weights={entry_weights}, Trend weights={trend_weights}, R/R={rr_ratio:.2f}")
                 else:
                     if self.current_strategy != StrategyType.SUPER_SCALP and loop_count % 10 == 0:
                         logger.info(f"[MAIN_LOOP] No valid signal generated. Waiting for next analysis cycle.")
@@ -365,11 +391,9 @@ class GoldManTradingBot:
                     last_activity_check = current_time
                 
                 if self.rl_engine.should_optimize(symbol_name, self.current_strategy.value):
-                    logger.info("[MAIN_LOOP] Starting RL optimization...")
-                    old_params = self.rl_engine.get_parameters(symbol_name, self.current_strategy.value)
-                    logger.info(f"[SENSITIVE] Starting RL optimization: Symbol={symbol_name}, Strategy={self.current_strategy.value}")
+                    logger.info(f"[RL] Starting optimization after 20 trades for {symbol_name}-{self.current_strategy.value}")
                     new_params = self.rl_engine.optimize_all(symbol_name, self.current_strategy.value)
-                    logger.info(f"[SENSITIVE] RL optimization completed: Symbol={symbol_name}, Strategy={self.current_strategy.value}, Updated {len(new_params)} parameters")
+                    logger.info(f"[RL] Optimization completed: Updated {len(new_params)} parameters in database (using default values in code)")
                     self.last_activity_time = time.time()
                 
                 if self.current_strategy == StrategyType.SUPER_SCALP:
@@ -471,11 +495,25 @@ class GoldManTradingBot:
                                     
                                     trailing_stop_applied = order_data.get('trailing_stop_applied', 0) == 1 if order_data else False
                                     
+                                    cursor.execute("""
+                                        SELECT action FROM rl_experiences 
+                                        WHERE order_id = ? AND symbol = ? AND strategy = ?
+                                    """, (ticket, order_data['symbol'], self.current_strategy.value))
+                                    exp_data = cursor.fetchone()
+                                    rr_ratio_used = 1.0
+                                    if exp_data:
+                                        try:
+                                            import json
+                                            action_data = json.loads(exp_data['action'])
+                                            rr_ratio_used = action_data.get('rr_ratio', 1.0)
+                                        except:
+                                            pass
+                                    
                                     reward = self.rl_engine.calculate_reward(
                                         order_profit=total_profit,
                                         transaction_cost=abs(total_profit) * 0.001,
                                         risk_penalty=0.0,
-                                        rr_ratio=1.0,
+                                        rr_ratio=rr_ratio_used,
                                         hold_time=0.0,
                                         max_profit=max_profit,
                                         close_reason=close_reason_str,
@@ -527,8 +565,9 @@ class GoldManTradingBot:
                                             logger.error(f"Error optimizing trend strength for ticket {ticket}: {e}")
                                 
                                 if self.telegram_bot and order_data:
-                                    profit_emoji = "✅" if total_profit > 0 else "❌"
-                                    message = f"""{profit_emoji} <b>Order Closed</b>
+                                    try:
+                                        profit_emoji = "✅" if total_profit > 0 else "❌"
+                                        message = f"""{profit_emoji} <b>Order Closed</b>
 
 📊 <b>Order Details:</b>
 • Ticket: {ticket}
@@ -541,7 +580,14 @@ class GoldManTradingBot:
 💰 <b>Account:</b>
 • Balance: ${account_info.balance:.2f}
 • Equity: ${account_info.equity:.2f}"""
-                                    await self.telegram_bot.send_notification(message)
+                                        await self.telegram_bot.send_notification(message)
+                                        logger.info(f"[TELEGRAM] Order closed notification sent for ticket {ticket}")
+                                    except Exception as e:
+                                        logger.error(f"[TELEGRAM] Error sending order closed notification: {e}")
+                                elif not self.telegram_bot:
+                                    logger.warning(f"[TELEGRAM] Telegram bot not available, skipping order closed notification for ticket {ticket}")
+                                elif not order_data:
+                                    logger.warning(f"[TELEGRAM] Order data not found for ticket {ticket}, skipping notification")
                 
                 await asyncio.sleep(60)
                 

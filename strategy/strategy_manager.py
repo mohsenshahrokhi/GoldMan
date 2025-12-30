@@ -254,6 +254,10 @@ class StrategyManager:
                     final_weight = trend_weight
                 
                 trend_weights_list.append(final_weight)
+            
+            total_weights = sum(trend_weights_list)
+            if total_weights > 0:
+                trend_weights_list = [w / total_weights for w in trend_weights_list]
         else:
             trend_weights_list = []
             for i in range(3):
@@ -404,22 +408,23 @@ class StrategyManager:
             compatible_pairs = []
             if trend_0 and trend_1 and trend_0 == trend_1 and trend_0 != "SIDEWAYS":
                 combined_weight = weight_0 + weight_1
-                if combined_weight >= 0.7:
+                if combined_weight >= 0.6:
                     compatible_pairs.append((0, 1, combined_weight, trend_0))
             if trend_0 and trend_2 and trend_0 == trend_2 and trend_0 != "SIDEWAYS":
                 combined_weight = weight_0 + weight_2
-                if combined_weight >= 0.7:
+                if combined_weight >= 0.6:
                     compatible_pairs.append((0, 2, combined_weight, trend_0))
             if trend_1 and trend_2 and trend_1 == trend_2 and trend_1 != "SIDEWAYS":
                 combined_weight = weight_1 + weight_2
-                if combined_weight >= 0.7:
+                if combined_weight >= 0.6:
                     compatible_pairs.append((1, 2, combined_weight, trend_1))
             
             if not compatible_pairs:
-                logger.info(f"[ENTRY] Rejected - No compatible trend pairs with combined weight >= 70%")
+                logger.info(f"[ENTRY] Rejected - No compatible trend pairs with combined weight >= 60%")
                 logger.info(f"  Trend 0 (M5): {trend_0} (weight: {weight_0:.2f})")
                 logger.info(f"  Trend 1 (M3): {trend_1} (weight: {weight_1:.2f})")
                 logger.info(f"  Trend 2 (M1): {trend_2} (weight: {weight_2:.2f})")
+                logger.info(f"  Combined weights: M5+M3={weight_0+weight_1:.2f}, M5+M1={weight_0+weight_2:.2f}, M3+M1={weight_1+weight_2:.2f}")
                 return None
             
             best_pair = max(compatible_pairs, key=lambda x: x[2])

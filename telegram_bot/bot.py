@@ -552,17 +552,21 @@ class TelegramBot:
     async def send_notification(self, message: str, parse_mode: str = 'HTML'):
         """ارسال اعلان به همه کاربران و کانال‌ها"""
         if not self.application:
+            logger.warning("[TELEGRAM] Application not initialized, cannot send notification")
             return
         
         if not self.chat_ids:
             if not self.warning_logged:
-                logger.warning("No chat_ids registered. Notifications will not be sent.")
-                logger.info("To enable notifications:")
+                logger.warning("[TELEGRAM] No chat_ids registered. Notifications will not be sent.")
+                logger.info("[TELEGRAM] To enable notifications:")
                 logger.info("  1. Set TELEGRAM_CHAT_ID in .env file (get it with /get_chat_id command)")
                 logger.info("  2. Or use /add_channel command in Telegram bot")
                 self.warning_logged = True
+            else:
+                logger.debug("[TELEGRAM] No chat_ids registered, skipping notification")
             return
         
+        logger.info(f"[TELEGRAM] Sending notification to {len(self.chat_ids)} chat(s)")
         success_count = 0
         for chat_id in self.chat_ids:
             try:
@@ -572,14 +576,19 @@ class TelegramBot:
                     parse_mode=parse_mode
                 )
                 success_count += 1
-                logger.debug(f"Notification sent successfully to chat_id: {chat_id}")
+                logger.info(f"[TELEGRAM] Notification sent successfully to chat_id: {chat_id}")
             except Exception as e:
                 error_msg = str(e)
                 if "chat not found" in error_msg.lower() or "bot was blocked" in error_msg.lower():
-                    logger.warning(f"Chat {chat_id} not accessible. Removing from list. Error: {e}")
+                    logger.warning(f"[TELEGRAM] Chat {chat_id} not accessible. Removing from list. Error: {e}")
                     self.chat_ids.discard(chat_id)
                 else:
-                    logger.error(f"Error sending notification to {chat_id}: {e}")
+                    logger.error(f"[TELEGRAM] Error sending notification to {chat_id}: {e}")
+        
+        if success_count == 0:
+            logger.warning(f"[TELEGRAM] Failed to send notification to any chat_id")
+        else:
+            logger.info(f"[TELEGRAM] Notification sent successfully to {success_count}/{len(self.chat_ids)} chat(s)")
         
         if success_count > 0:
             logger.info(f"Notification sent to {success_count} chat(s)")

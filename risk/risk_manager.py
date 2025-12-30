@@ -496,28 +496,19 @@ class RiskManager:
                             logger.debug(f"[SL_TP] Forced TP adjustment to meet min R/R: OldTP={tp_weighted:.5f}, NewTP={tp_final:.5f}, R/R={min_rr_ratio:.2f}")
         
         if strategy == "SUPER_SCALP" or strategy == "Super Scalp":
+            min_rr_super_scalp = 1.5
+            max_rr_super_scalp = 3.0
+            
             if direction == "BUY":
                 if sl_final < entry_price - max_sl_distance:
                     sl_final = entry_price - max_sl_distance
                 if sl_final > entry_price - (max_sl_distance * 0.3):
                     sl_final = entry_price - (max_sl_distance * 0.3)
-                if tp_final > entry_price + max_tp_distance:
-                    tp_final = entry_price + max_tp_distance
-                if tp_final < entry_price + (max_tp_distance * 0.5):
-                    tp_final = entry_price + (max_tp_distance * 0.5)
             else:
                 if sl_final > entry_price + max_sl_distance:
                     sl_final = entry_price + max_sl_distance
                 if sl_final < entry_price + (max_sl_distance * 0.3):
                     sl_final = entry_price + (max_sl_distance * 0.3)
-                if tp_final < entry_price - max_tp_distance:
-                    tp_final = entry_price - max_tp_distance
-                if tp_final > entry_price - (max_tp_distance * 0.5):
-                    tp_final = entry_price - (max_tp_distance * 0.5)
-            
-            min_rr_super_scalp = 1.5
-            max_rr_super_scalp = 3.0
-            current_rr_super_scalp = abs(tp_final - entry_price) / abs(entry_price - sl_final) if abs(entry_price - sl_final) > 0 else 0
             
             symbol_info = mt5.symbol_info(symbol) if mt5 else None
             adjustment = 0.0
@@ -528,6 +519,56 @@ class RiskManager:
                     commission = commission / symbol_info.trade_contract_size if symbol_info.trade_contract_size > 0 else 0.0
                 safety_margin = 5 * symbol_info.point
                 adjustment = spread + safety_margin + commission
+            
+            sl_distance = abs(entry_price - sl_final) if abs(entry_price - sl_final) > 0 else 0
+            if sl_distance > 0:
+                required_tp_distance = sl_distance * min_rr_super_scalp
+                if direction == "BUY":
+                    tp_final = entry_price + required_tp_distance
+                    if tp_final > entry_price + max_tp_distance:
+                        tp_final = entry_price + max_tp_distance
+                        sl_distance_new = abs(tp_final - entry_price) / min_rr_super_scalp
+                        sl_new = entry_price - sl_distance_new
+                        if sl_new < entry_price - max_sl_distance:
+                            sl_new = entry_price - max_sl_distance
+                        if sl_new > entry_price - (max_sl_distance * 0.3):
+                            sl_new = entry_price - (max_sl_distance * 0.3)
+                        
+                        sl_node_raw = market_engine.find_nearest_node(df, entry_price, "below")
+                        if sl_node_raw and adjustment > 0:
+                            sl_min_required = sl_node_raw - adjustment
+                            if sl_new > sl_min_required:
+                                sl_new = sl_min_required
+                                required_tp_distance_new = abs(entry_price - sl_new) * min_rr_super_scalp
+                                tp_final = entry_price + required_tp_distance_new
+                                if tp_final > entry_price + max_tp_distance:
+                                    tp_final = entry_price + max_tp_distance
+                        
+                        sl_final = sl_new
+                else:
+                    tp_final = entry_price - required_tp_distance
+                    if tp_final < entry_price - max_tp_distance:
+                        tp_final = entry_price - max_tp_distance
+                        sl_distance_new = abs(entry_price - tp_final) / min_rr_super_scalp
+                        sl_new = entry_price + sl_distance_new
+                        if sl_new > entry_price + max_sl_distance:
+                            sl_new = entry_price + max_sl_distance
+                        if sl_new < entry_price + (max_sl_distance * 0.3):
+                            sl_new = entry_price + (max_sl_distance * 0.3)
+                        
+                        sl_node_raw = market_engine.find_nearest_node(df, entry_price, "above")
+                        if sl_node_raw and adjustment > 0:
+                            sl_min_required = sl_node_raw + adjustment
+                            if sl_new < sl_min_required:
+                                sl_new = sl_min_required
+                                required_tp_distance_new = abs(entry_price - sl_new) * min_rr_super_scalp
+                                tp_final = entry_price - required_tp_distance_new
+                                if tp_final < entry_price - max_tp_distance:
+                                    tp_final = entry_price - max_tp_distance
+                        
+                        sl_final = sl_new
+            
+            current_rr_super_scalp = abs(tp_final - entry_price) / abs(entry_price - sl_final) if abs(entry_price - sl_final) > 0 else 0
             
             if current_rr_super_scalp < min_rr_super_scalp:
                 sl_distance = abs(entry_price - sl_final)
@@ -569,6 +610,38 @@ class RiskManager:
                 
                 final_rr = abs(tp_final - entry_price) / abs(entry_price - sl_final) if abs(entry_price - sl_final) > 0 else 0
                 logger.warning(f"[SL_TP] Super Scalp: Adjusted to meet min R/R=1.5: TP={tp_final:.5f}, SL={sl_final:.5f}, R/R={final_rr:.2f}")
+                
+                sl_node_raw = market_engine.find_nearest_node(df, entry_price, "below" if direction == "BUY" else "above")
+                if sl_node_raw and adjustment > 0:
+                    if direction == "BUY":
+                        sl_min_required = sl_node_raw - adjustment
+                        if sl_final > sl_min_required:
+                            sl_final = sl_min_required
+                            required_tp_distance = abs(entry_price - sl_final) * min_rr_super_scalp
+                            tp_final = entry_price + required_tp_distance
+                            if tp_final > entry_price + max_tp_distance:
+                                tp_final = entry_price + max_tp_distance
+                                sl_distance_new = abs(tp_final - entry_price) / min_rr_super_scalp
+                                sl_new = entry_price - sl_distance_new
+                                if sl_new < sl_min_required:
+                                    sl_new = sl_min_required
+                                sl_final = sl_new
+                    else:
+                        sl_min_required = sl_node_raw + adjustment
+                        if sl_final < sl_min_required:
+                            sl_final = sl_min_required
+                            required_tp_distance = abs(entry_price - sl_final) * min_rr_super_scalp
+                            tp_final = entry_price - required_tp_distance
+                            if tp_final < entry_price - max_tp_distance:
+                                tp_final = entry_price - max_tp_distance
+                                sl_distance_new = abs(entry_price - tp_final) / min_rr_super_scalp
+                                sl_new = entry_price + sl_distance_new
+                                if sl_new > sl_min_required:
+                                    sl_new = sl_min_required
+                                sl_final = sl_new
+                    
+                    final_rr = abs(tp_final - entry_price) / abs(entry_price - sl_final) if abs(entry_price - sl_final) > 0 else 0
+                    logger.warning(f"[SL_TP] Super Scalp: Final adjustment after node check: TP={tp_final:.5f}, SL={sl_final:.5f}, R/R={final_rr:.2f}")
             
             elif current_rr_super_scalp > max_rr_super_scalp:
                 sl_distance = abs(entry_price - sl_final)

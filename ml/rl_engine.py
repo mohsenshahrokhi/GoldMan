@@ -150,17 +150,12 @@ class RLEngine:
         return total_reward
     
     def get_weights(self, symbol: str, strategy: str) -> Dict[str, float]:
-        weights = self.db.get_rl_weights(symbol, strategy)
-        if not weights:
-            if strategy == "SUPER_SCALP":
-                weights = self.default_weights_super_scalp.copy()
-            else:
-                weights = self.default_weights.copy()
-            self.save_weights(symbol, strategy, weights)
-        return weights
+        if strategy == "SUPER_SCALP" or strategy == "Super Scalp":
+            return self.default_weights_super_scalp.copy()
+        else:
+            return self.default_weights.copy()
     
     def get_parameters(self, symbol: str, strategy: str) -> Dict[str, float]:
-        params = self.db.get_rl_weights(symbol, strategy)
         result = self.default_parameters.copy()
         
         if strategy == "SUPER_SCALP" or strategy == "Super Scalp":
@@ -173,10 +168,6 @@ class RLEngine:
             result['max_sl_distance_percent'] = 0.05
             result['max_tp_distance_percent'] = 0.10
         
-        for param_name in self.default_parameters.keys():
-            if param_name in params:
-                result[param_name] = params[param_name]
-        
         return result
     
     def save_parameters(self, symbol: str, strategy: str, parameters: Dict[str, float]):
@@ -186,44 +177,10 @@ class RLEngine:
         self.db.save_rl_weights(symbol, strategy, weights)
     
     def get_entry_weights(self, symbol: str, strategy: str) -> Dict[str, float]:
-        weights = self.db.get_rl_entry_weights(symbol, strategy)
-        if not weights:
-            weights = self.default_entry_weights.copy()
-            self.save_entry_weights(symbol, strategy, weights)
-        
-        result = self.default_entry_weights.copy()
-        for weight_name in self.default_entry_weights.keys():
-            if weight_name in weights:
-                result[weight_name] = weights[weight_name]
-        
-        total = sum(result.values())
-        if total > 0:
-            for key in result:
-                result[key] /= total
-        else:
-            result = self.default_entry_weights.copy()
-        
-        return result
+        return self.default_entry_weights.copy()
     
     def get_trend_weights(self, symbol: str, strategy: str) -> Dict[str, float]:
-        weights = self.db.get_rl_trend_weights(symbol, strategy)
-        if not weights:
-            weights = self.default_trend_weights.copy()
-            self.save_trend_weights(symbol, strategy, weights)
-        
-        result = self.default_trend_weights.copy()
-        for weight_name in self.default_trend_weights.keys():
-            if weight_name in weights:
-                result[weight_name] = weights[weight_name]
-        
-        total = sum(result.values())
-        if total > 0:
-            for key in result:
-                result[key] /= total
-        else:
-            result = self.default_trend_weights.copy()
-        
-        return result
+        return self.default_trend_weights.copy()
     
     def save_entry_weights(self, symbol: str, strategy: str, weights: Dict[str, float]):
         self.db.save_rl_entry_weights(symbol, strategy, weights)
@@ -429,19 +386,9 @@ class RLEngine:
     def optimize_based_on_result(self, symbol: str, strategy: str, order_id: int,
                                  close_reason: str, trailing_stop_applied: bool,
                                  max_profit: float, order_profit: float):
-        if close_reason == "TP":
-            return
-        
-        if order_profit < 0:
-            if trailing_stop_applied:
-                self.optimize_entry_weights(symbol, strategy)
-                self.optimize_trend_weights(symbol, strategy)
-                self.optimize_trailing_stop_parameters(symbol, strategy)
-            else:
-                self.optimize_entry_weights(symbol, strategy)
-                self.optimize_trend_weights(symbol, strategy)
-        elif order_profit > 0 and max_profit > order_profit:
-            self.optimize_risk_management_parameters(symbol, strategy)
+        if self.should_optimize(symbol, strategy):
+            logger.info(f"[RL] Triggering optimization after 20 trades for {symbol}-{strategy}")
+            self.optimize_all(symbol, strategy)
     
     def optimize_trailing_stop_parameters(self, symbol: str, strategy: str):
         cursor = self.db.conn.cursor()
@@ -750,7 +697,12 @@ class RLEngine:
         else:
             new_weights = self.default_trend_weights.copy()
         
-        old_weights = self.get_trend_weights(symbol, strategy)
+        old_weights_db = self.db.get_rl_trend_weights(symbol, strategy)
+        old_weights = self.default_trend_weights.copy()
+        for weight_name in self.default_trend_weights.keys():
+            if weight_name in old_weights_db:
+                old_weights[weight_name] = old_weights_db[weight_name]
+        
         final_weights = {}
         for trend_key in old_weights:
             final_weights[trend_key] = (
